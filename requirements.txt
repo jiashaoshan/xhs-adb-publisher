@@ -1,0 +1,2 @@
+uiautomator2>=3.0.0
+adbutils>=2.0.0
