@@ -23,8 +23,6 @@ def get_device():
         _DEVICE = u2.connect(serial) if serial else u2.connect()
     return _DEVICE
 
-# ── 基础操作 ──────────────────────────────────────────
-
 def home():
     get_device().press("home"); jitter(0.3)
 
@@ -37,13 +35,11 @@ def send_text(text):
 def press_key(key):
     get_device().press(key)
 
-# ── 小红书发布流程 ────────────────────────────────────
-
 def open_xhs():
     d = get_device()
     d.press("home"); jitter(0.5)
-    d.app_start("com.xingin.xhs"); jitter(3, 0.1)  # app启动少抖
-    d.click(540, 2284); jitter(1.5)  # +号
+    d.app_start("com.xingin.xhs"); jitter(3, 0.1)
+    d.click(540, 2284); jitter(1.5)
     return d
 
 def click_xie_wenzi(d=None):
@@ -58,23 +54,19 @@ def card_style_to_publish(d=None):
             break
         jitter(0.5)
     btns = list(d(text="下一步", className="android.widget.TextView"))
-    if btns:
-        btns[-1].click()
-    else:
-        d.click(897, 2226)
+    if btns: btns[-1].click()
+    else: d.click(897, 2226)
     jitter(2)
 
 def set_visibility_and_publish(d=None):
     d = d or get_device()
-    d.click(204, 1842); jitter(0.8)     # 公开可见
+    d.click(204, 1842); jitter(0.8)
     jitter(0.3)
-    d.click(297, 2232); jitter(0.5)     # 仅自己可见
+    d.click(297, 2232); jitter(0.5)
     jitter(0.5)
-    d.click(687, 2211); jitter(3)       # 发布笔记 + 等待完成
-    for _ in range(3):                  # 多按Home确保回桌面
+    d.click(687, 2211); jitter(3)
+    for _ in range(3):
         d.press("home"); jitter(0.3)
-
-# ── 写想法 ─────────────────────────────────────────
 
 def xie_xie_fa(content, title="测试标题"):
     d = open_xhs()
@@ -88,19 +80,17 @@ def xie_xie_fa(content, title="测试标题"):
     d.send_keys(title); jitter(0.3)
     set_visibility_and_publish(d)
 
-# ── 写长文 ─────────────────────────────────────────
-
 def xie_chang_wen(editor_body, publish_body="", title=""):
     d = open_xhs()
     click_xie_wenzi(d)
-    d.click(375, 1931); jitter(2)       # 写长文
+    d.click(375, 1931); jitter(2)
     if title:
         d.click(200, 300); jitter(0.3)
         d.send_keys(title); jitter(0.3)
     d.click(540, 600); jitter(0.3)
     d.send_keys(editor_body); jitter(0.3)
     logger.info("一键排版中...")
-    d.click(540, 2232); jitter(3)        # 一键排版
+    d.click(540, 2232); jitter(3)
     templates = ["清晰明朗", "简约基础", "灵感备忘", "涂鸦马克", "素雅底纹"]
     for t in templates:
         try:
@@ -110,29 +100,37 @@ def xie_chang_wen(editor_body, publish_body="", title=""):
         except: pass
     btns = list(d(text="下一步", className="android.widget.TextView"))
     btns[-1].click() if btns else d.click(897, 2256)
-    
-    # 等发布确认页预览渲染完成（包括正文图片生成）
+
+    # 等发布确认页预览渲染完成
     for _ in range(30):
         if not d(text="图片生成中").exists(timeout=0.5):
             break
         jitter(0.5)
-    
+
     if publish_body:
-        # 先录入小红书正文
-        d.click(540, 752); jitter(0.8)
+        # 找到并点击正文输入框
+        try:
+            el = d(text="添加正文")
+            if el.exists(timeout=1):
+                el.click(); jitter(0.3)
+            else:
+                d.click(540, 752); jitter(0.5)
+        except:
+            d.click(540, 752); jitter(0.5)
+
         d.send_keys(publish_body); jitter(0.5)
-        
-        # 关闭AI自动匹配弹出框（输入正文后可能出现）
-        close_words = ["关闭", "知道了", "x", "×", "跳过", "不用了"]
-        for w in close_words:
+
+        # 关闭可能出现的AI自动生成正文小结框
+        close_targets = ["关闭", "知道了", "x", "×", "跳过", "不用了", "收起"]
+        for w in close_targets:
             try:
                 el = d(text=w)
-                if el.exists(timeout=0.5):
+                if el.exists(timeout=0.3):
                     el.click()
-                    logger.info(f"关闭弹窗: {w}")
+                    logger.info(f"关闭: {w}")
                     jitter(0.3)
                     break
             except:
                 pass
-    
+
     set_visibility_and_publish(d)
