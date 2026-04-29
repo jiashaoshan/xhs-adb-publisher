@@ -73,23 +73,38 @@ def generate_article(product_url: str, product_name: str = "",
     
     logger.info(f"正在调用 LLM 生成文章...")
     result = call_llm_json(
-        system_prompt="你是一个专业的小红书内容创作者。严格按照用户要求输出JSON格式。",
+        system_prompt="你是一个专业的小红书内容创作者。文章正文需2500字左右，内容要详细、有血有肉。严格按照用户要求输出JSON格式。",
         user_prompt=user_prompt,
+        max_tokens=16384,
     )
     
     title = result.get("title", config.get("default_title", "AI工具实测分享"))
     body = result.get("body", "")
     
-    # 截断标题不超过20字
-    if len(title) > 20:
-        title = title[:18] + "…"
+    # 截断标题不超过20字符
+    import re
+    title_clean = re.sub(r'[\U00010000-\U0010ffff]', '', title)  # 去emoji数实际字数
+    if sum(1 for c in title if ord(c) > 127 or '\u4e00' <= c <= '\u9fff') > 20:
+        # 如果中文字超过20个，截断
+        title = title[:22] + "…"
     
     # 分割正文 → 编辑器正文(2500字) + 小红书正文(1000字)
-    editor_body = body[:config.get("editor_body_target_chars", 2500)]
-    xhs_body = body[config.get("editor_body_target_chars", 2500):][:config.get("xhs_body_max_chars", 1000)]
-    if not xhs_body:
-        xhs_body = editor_body[-config.get("xhs_body_max_chars", 1000):]
-        editor_body = editor_body[:-config.get("xhs_body_max_chars", 1000)]
+    target_editor = config.get("editor_body_target_chars", 2500)
+    target_xhs = config.get("xhs_body_max_chars", 1000)
+    
+    if len(body) <= target_xhs:
+        # 正文太短，全部给小红书正文
+        editor_body = body
+        xhs_body = body
+    elif len(body) <= target_editor + target_xhs:
+        # 不够2500+1000，按比例分
+        split_at = max(len(body) - target_xhs, len(body) // 2)
+        editor_body = body[:split_at]
+        xhs_body = body[split_at:]
+    else:
+        # 足够长，按标准切
+        editor_body = body[:target_editor]
+        xhs_body = body[target_editor:target_editor+target_xhs]
     
     return {
         "title": title,
