@@ -119,24 +119,9 @@ def xie_chang_wen(editor_body, publish_body="", title=""):
         jitter(0.5)
 
     if publish_body:
-        # 找到并点击正文输入框
-        try:
-            el = d(text="添加正文")
-            if el.exists(timeout=1):
-                el.click(); jitter(0.3)
-            else:
-                d.click(*s(540, 752)); jitter(0.5)
-        except:
-            d.click(*s(540, 752)); jitter(0.5)
-
+        d.click(*s(540, 752)); jitter(0.5)   # 点击'添加正文'文本框
         d.send_keys(publish_body); jitter(0.5)
-        
-        # 关闭AI自动生成正文小结框（输入正文后才会出现）
-        # × 位置: [954,1244][1080,1324]
-        d.click(*s(1055, 1284)); jitter(0.3)
 
     set_visibility_and_publish(d)
-    
-    # 关闭小红书后台进程，保证下次打开在首页
     d.app_stop('com.xingin.xhs')
     logger.info("关闭小红书后台")
