@@ -86,7 +86,7 @@ def _retry_llm(prompt_template: str, product_url: str, product_name: str,
         result = call_llm_json(
             system_prompt=f"你是一个专业的小红书内容创作者。{length_hint}严格按照用户要求输出JSON格式。",
             user_prompt=prompt + length_hint,
-            max_tokens=16384,
+            max_tokens=32768,
         )
         
         title = result.get("title", "")

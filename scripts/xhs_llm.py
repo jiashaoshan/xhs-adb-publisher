@@ -4,8 +4,8 @@ from typing import Optional, Dict, Any
 logger = logging.getLogger(__name__)
 
 LLM_API_URL = "https://api.deepseek.com/chat/completions"
-DEFAULT_MODEL = "deepseek-chat"
-DEFAULT_TIMEOUT = 120
+DEFAULT_MODEL = "deepseek-v4-flash"  # ← V4系列输出上限384K tokens
+DEFAULT_TIMEOUT = 180
 
 def _find_api_key() -> Optional[str]:
     """从环境变量 / openclaw.json 读取 DeepSeek API Key"""
@@ -49,7 +49,9 @@ def call_llm(system_prompt: str, user_prompt: str, model: str = DEFAULT_MODEL,
         raise
 
 def call_llm_json(*args, **kwargs) -> dict:
-    content = call_llm(*args, **kwargs, response_format={"type": "json_object"})
+    # 不用 response_format=json_object 约束，避免模型截断输出
+    # 提示词已要求输出JSON，模型会自动遵循
+    content = call_llm(*args, **kwargs)
     try:
         return json.loads(content)
     except json.JSONDecodeError:
