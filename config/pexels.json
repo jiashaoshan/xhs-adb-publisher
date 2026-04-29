@@ -1,0 +1,8 @@
+{
+  "_说明": "Pexels 图片配置",
+  "api_key_env": "PEXELS_API_KEY",
+  "per_page": 5,
+  "image_count": 3,
+  "min_width": 1080,
+  "min_height": 720
+}

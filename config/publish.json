@@ -1,0 +1,13 @@
+{
+  "_说明": "文章发布配置",
+  "default_title": "AI工具实测分享",
+  "target_audience": "创业者、技术人、效率爱好者",
+  "xhs_body_max_chars": 1000,
+  "editor_body_target_chars": 2500,
+  "publish_visibility": "仅自己可见",
+  "wait_seconds": {
+    "app_launch": 3,
+    "page_transition": 1.5,
+    "publish_complete": 2.5
+  }
+}
