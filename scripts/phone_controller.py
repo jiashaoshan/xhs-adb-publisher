@@ -70,9 +70,9 @@ def set_visibility_and_publish(d=None):
     jitter(0.3)
     d.click(297, 2232); jitter(0.5)     # 仅自己可见
     jitter(0.5)
-    d.click(687, 2211); jitter(2.5)     # 发布笔记
-    d.press("home"); jitter(0.5)
-    d.press("home")
+    d.click(687, 2211); jitter(3)       # 发布笔记 + 等待完成
+    for _ in range(3):                  # 多按Home确保回桌面
+        d.press("home"); jitter(0.3)
 
 # ── 写想法 ─────────────────────────────────────────
 
