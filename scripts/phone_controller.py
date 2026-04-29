@@ -120,17 +120,21 @@ def xie_chang_wen(editor_body, publish_body="", title=""):
 
         d.send_keys(publish_body); jitter(0.5)
 
-        # 关闭可能出现的AI自动生成正文小结框
-        close_targets = ["关闭", "知道了", "x", "×", "跳过", "不用了", "收起"]
-        for w in close_targets:
+        # 关闭AI自动生成正文小结框（搜索text和content-desc）
+        for xml_tag in ['text', 'content-desc']:
             try:
-                el = d(text=w)
-                if el.exists(timeout=0.3):
-                    el.click()
-                    logger.info(f"关闭: {w}")
-                    jitter(0.3)
-                    break
+                for w in ["×", "x", "关闭", "知道了", "跳过", "不用了", "收起"]:
+                    el = d(**{xml_tag: w})
+                    if el.exists(timeout=0.2):
+                        el.click()
+                        logger.info(f"关闭面板: {w}")
+                        jitter(0.3)
+                        break
             except:
                 pass
 
     set_visibility_and_publish(d)
+    
+    # 关闭小红书后台进程，保证下次打开在首页
+    d.app_stop('com.xingin.xhs')
+    logger.info("关闭小红书后台")
