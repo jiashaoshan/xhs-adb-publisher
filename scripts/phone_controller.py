@@ -108,6 +108,10 @@ def xie_chang_wen(editor_body, publish_body="", title=""):
         jitter(0.5)
 
     if publish_body:
+        # 先关闭AI自动生成正文小结框（如果有，在输入框下方）
+        # 点击右下角×位置: [987,1244][1080,1324]
+        d.click(1033, 1284); jitter(0.3)
+        
         # 找到并点击正文输入框
         try:
             el = d(text="添加正文")
@@ -119,19 +123,6 @@ def xie_chang_wen(editor_body, publish_body="", title=""):
             d.click(540, 752); jitter(0.5)
 
         d.send_keys(publish_body); jitter(0.5)
-
-        # 关闭AI自动生成正文小结框（搜索text和content-desc）
-        for xml_tag in ['text', 'content-desc']:
-            try:
-                for w in ["×", "x", "关闭", "知道了", "跳过", "不用了", "收起"]:
-                    el = d(**{xml_tag: w})
-                    if el.exists(timeout=0.2):
-                        el.click()
-                        logger.info(f"关闭面板: {w}")
-                        jitter(0.3)
-                        break
-            except:
-                pass
 
     set_visibility_and_publish(d)
     
