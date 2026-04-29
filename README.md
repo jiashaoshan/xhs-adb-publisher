@@ -9,12 +9,10 @@
 ### 1. 环境准备
 
 ```bash
-# 安装 Python 依赖
 pip install uiautomator2 adbutils
-
-# 验证手机连接
-adb devices
-# 确保显示你的设备: FAS84PQ45T8HTOTK    device
+export ANDROID_SERIAL=<你的设备序列号>   # adb devices 查看
+export DEEPSEEK_API_KEY=sk-xxx           # LLM 文章生成
+export PEXELS_API_KEY=xxx                # 自动配图（可选）
 ```
 
 ### 2. 手机端配置
@@ -23,139 +21,132 @@ adb devices
 |------|------|
 | ① | 开启「开发者选项」和「USB 调试」 |
 | ② | 连接电脑 USB，信任 RSA 指纹 |
-| ③ | 安装 ATX Keyboard（`uiautomator2` 会自动装，或应用商店搜 ATX） |
+| ③ | 安装 ATX Keyboard（`uiautomator2` 会自动装） |
 | ④ | **设置 → 其他设置 → 键盘与输入法 → 默认输入法 → 选 ATX Keyboard** |
 
-> ⚠️ ATX Keyboard 必须设为**默认输入法**，否则中文 `send_keys()` 无法工作。仅「启用」不够。
+> ⚠️ ATX Keyboard 必须设为**默认输入法**，否则中文输入无法工作。
 
-### 3. 快速测试
+### 3. 使用
 
 ```bash
-# 设置环境变量（每次运行前）
-export ANDROID_SERIAL=FAS84PQ45T8HTOTK
+# 完整发布（LLM 生成 → Pexels 配图 → ADB 发布）
+python3 xhs_adb_publisher.py --publish --product-url "https://example.com" --product-name "产品名"
 
-# 测试连接
-python3 android_ctl.py info
-# 输出示例: 设备: 1080x2400, PGCM10, com.android.launcher
+# 仅生成不发布（预览）
+python3 xhs_adb_publisher.py --publish --dry-run --product-url "https://example.com"
 
-# 写想法
-python3 android_ctl.py 写想法 "你好，这是自动发布的笔记" "我的标题"
+# 直接写长文（跳过 LLM）
+python3 xhs_adb_publisher.py --write-long "编辑器正文" --xhs-body "小红书正文" --title "标题"
 
-# 写长文
-python3 android_ctl.py 写长文 "这是编辑区正文内容" "这是小红书正文" "长文标题"
+# 直接写想法
+python3 xhs_adb_publisher.py --write-thought "正文内容" --title "标题"
+
+# 旧版 CLI（兼容）
+python3 android_ctl.py 写长文 "编辑器正文" "小红书正文" "标题"
+python3 android_ctl.py 写想法 "内容" "标题"
+```
+
+---
+
+## 文件结构
+
+```
+xhs-adb-publisher/
+├── xhs_adb_publisher.py           ← 统一 CLI 入口
+├── android_ctl.py                 ← 旧版 CLI（兼容）
+├── SKILL.md                       ← OpenClaw 技能定义
+├── scripts/
+│   ├── phone_controller.py        ← ADB 手机操控核心（含随机抖动）
+│   ├── xhs_article_publisher.py   ← 文章发布模块 (LLM→Pexels→ADB)
+│   ├── xhs_comment_acquisition.py ← 评论区获客 (TODO)
+│   ├── xhs_llm.py                 ← DeepSeek API 封装
+│   └── pexels_images.py           ← Pexels 图片搜索下载
+├── templates/
+│   ├── article-prompt.md          ← 小红书文章生成提示词
+│   └── comment-prompt.md          ← 评论提示词 (TODO)
+├── config/
+│   ├── publish.json               ← 发布配置
+│   └── pexels.json                ← Pexels 配置
+└── data/                           ← 运行时数据（自动创建）
 ```
 
 ---
 
 ## 设计
 
-### 整体架构
+### 架构
 
 ```
-┌──────────────┐    USB/WiFi    ┌─────────────┐    uiautomator2    ┌──────────┐
-│  你的电脑      │ ───────────→  │ Android 手机 │ ────────────────→ │ 小红书App │
-│ android_ctl.py │              │ ATX Agent    │   点击/输入/截图  │          │
-└──────────────┘               │ ATX Keyboard │                  └──────────┘
-                                └─────────────┘
+┌─────────────────┐
+│  xhs_adb_publisher.py  │ ← CLI 入口
+└────────┬────────┘
+         │
+    ┌────┴────┬──────────┐
+    │         │          │
+    ▼         ▼          ▼
+┌────────┐ ┌────────┐ ┌──────────────┐
+│  LLM   │ │ Pexels │ │ 评论区获客    │
+│ 生成文章 │ │ 自动配图 │ │ (TODO)       │
+└───┬────┘ └───┬────┘ └──────────────┘
+    │         │
+    └────┬────┘
+         │
+         ▼
+┌─────────────────┐
+│  phone_controller.py │ ← ADB 操控手机
+│  (uiautomator2)      │
+└────────┬────────┘
+         │ USB/WiFi
+         ▼
+┌─────────────────┐
+│  Android 手机    │
+│  小红书 App      │
+└─────────────────┘
 ```
 
 ### 技术选型
 
 | 组件 | 作用 |
 |------|------|
-| `uiautomator2` | Python 库，通过 ADB 与手机 ATX Agent 通信 |
-| `ATX Agent` | 手机上运行的服务进程，执行 UI 操作 |
-| `ATX Keyboard` | 自定义输入法，支持通过 ADB broadcast 注入中文 |
-| `ADB` | Android Debug Bridge，USB 连接通道 |
-
-### 核心流程
-
-**写想法：**
-```
-桌面 → 打开小红书 → 点击底部+号 → 点击写文字
-→ 输入正文内容
-→ 点击下一步(顶) → 进入卡片样式页
-→ 等图片渲染完成 → 点击下一步(底) → 进入发布确认页
-→ 录入标题
-→ 公开可见 → 仅自己可见
-→ 发布笔记 → 回到桌面
-```
-
-**写长文：**
-```
-桌面 → 打开小红书 → 点击底部+号 → 点击写文字 → 点击写长文
-→ 输入标题 + 输入编辑区正文
-→ 点击一键排版 → 模板选择页
-→ 选默认排版模板 → 点击下一步 → 发布确认页
-→ 录入小红书正文（标题自动带入）
-→ 公开可见 → 仅自己可见
-→ 发布笔记 → 回到桌面
-```
+| `uiautomator2` | Python ←→ 手机 ATX Agent 通信 |
+| `ATX Keyboard` | 自定义输入法，支持中文注入 |
+| `DeepSeek API` | AI 生成小红书风格文章 |
+| `Pexels API` | 搜索产品相关配图 |
 
 ---
 
-## 实现
+## 风控与安全
 
-### 文件结构
+### 被封风险分析
 
-```
-xhs-adb-publisher/
-├── SKILL.md             # OpenClaw 技能定义
-├── README.md            # 本文档
-├── android_ctl.py       # 主脚本（~160行）
-├── requirements.txt     # Python 依赖
-└── install.sh           # 一键安装脚本
-```
+ADB 操控模拟的是**真人点击事件**，对小红书 App 来说就是普通 touch 事件，**不是 API 调用**，技术层面无特征。风险主要来自**行为模式**：
 
-### 核心函数
+| 风险因素 | 级别 | 说明 |
+|---------|:---:|------|
+| 内容同质化 | ⚠️ | AI 生成的文章结构和用词过于相似 |
+| 发布频率 | ⚠️ | 一天发几十篇，明显非人类 |
+| 操作节奏 | ⚠️ | 每次间隔完全一致，可被时序分析 |
+| 缺少互动 | ⚠️ | 只发不刷不点赞，无正常用户行为 |
+| 仅自己可见 | ✅ | 发布后设为仅自己可见，不上广场 |
 
-| 函数 | 作用 |
+### 脚本自带的安全策略
+
+- **随机抖动** — 所有 `time.sleep` 加了 ±20% 随机值，操作间隔无规律
+- **仅自己可见** — 发布后自动设为仅自己可见
+- **差异化模板** — 提示词要求每篇结构和用词不一样
+- **分段输入** — 长文编辑器正文 + 小红书正文分开录入
+
+### 建议的运营策略
+
+| 策略 | 说明 |
 |------|------|
-| `xie_xie_fa(content, title)` | 写想法 — 纯文字笔记 |
-| `xie_chang_wen(editor_body, publish_body, title)` | 写长文 — 排版后发 |
-| `_open_xhs()` | 打开小红书 + 点+号 |
-| `_card_style_to_publish(d)` | 卡片样式页 → 发布确认页（含等渲染） |
-| `_visibility_and_publish(d)` | 设置仅自己可见 → 发布 → 回桌面 |
-
-### 坐标系统
-
-基于 1080×2400 屏幕（OnePlus PGCM10），如需适配其他屏幕需调整坐标：
-
-| 元素 | 坐标 (x, y) |
-|------|:-----------:|
-| 底部+号 | (540, 2284) |
-| 写文字 | (540, 2079) |
-| 写长文 | (375, 1931) |
-| 下一步(顶) | (920, 176) |
-| 下一步(底-卡片页) | (897, 2226) |
-| 下一步(底-模板页) | (897, 2256) |
-| 添加标题 | (562, 629) |
-| 小红书正文 | (540, 752) |
-| 公开可见 | (204, 1842) |
-| 仅自己可见 | (297, 2232) |
-| 发布笔记 | (687, 2211) |
+| 📅 **频率控制** | 每小时最多 1-2 篇，每天不超过 10 篇 |
+| 🔄 **内容差异化** | 每篇换开头故事、换语气、换 emoji 组合 |
+| 📱 **混合使用** | 手机上正常刷小红书、点赞、收藏 |
+| ⏳ **延时发布** | 仅自己可见后，过几天再手动改公开 |
+| 🚫 **避免高风险操作** | 不要在评论区高频发私信导流，那是重点打击行为 |
 
 ---
-
-## 安装部署
-
-### 方式一：直接使用
-
-```bash
-git clone <repo-url>
-cd xhs-adb-publisher
-pip install -r requirements.txt
-export ANDROID_SERIAL=<你的设备序列号>
-python3 android_ctl.py 写想法 "测试" "标题"
-```
-
-### 方式二：OpenClaw 技能安装
-
-将本目录链接或复制到 `~/.openclaw/workspace/skills/` 下：
-
-```bash
-ln -s $(pwd) ~/.openclaw/workspace/skills/xhs-adb-publisher
-```
 
 ## 常见问题
 
@@ -163,24 +154,14 @@ ln -s $(pwd) ~/.openclaw/workspace/skills/xhs-adb-publisher
 确保 ATX Keyboard 设为**默认输入法**，不光是「启用」。
 ```bash
 adb shell settings get secure default_input_method
-# 应该返回: com.github.uiautomator/.AdbKeyboard
+# 应返回: com.github.uiautomator/.AdbKeyboard
 ```
 
-### Q: 坐标不准确
-如果你的手机分辨率不是 1080×2400，需要重新校准坐标：
-```bash
-# 截图 + 查看元素 bounds
-python3 -c "
-import uiautomator2 as u2
-d = u2.connect()
-d.screenshot('/tmp/debug.png')
-xml = d.dump_hierarchy()
-# 解析 xml 找目标元素的 bounds
-"
-```
+### Q: 坐标不准
+当前坐标适配 1080×2400 屏幕（OnePlus PGCM10）。其他分辨率需校准。
 
 ### Q: 卡在卡片样式页
-等「图片生成中」消失后再点下一步，脚本已内置等待逻辑。
+脚本会等待「图片生成中」消失后再点击下一步，最多等 15 秒。
 
 ---
 
