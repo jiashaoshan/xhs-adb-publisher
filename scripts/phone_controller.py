@@ -112,11 +112,12 @@ def xie_chang_wen(editor_body, publish_body="", title=""):
     btns = list(d(text="下一步", className="android.widget.TextView"))
     btns[-1].click() if btns else d.click(*s(897, 2256))
 
-    # 等发布确认页预览渲染完成
-    for _ in range(30):
-        if not d(text="图片生成中").exists(timeout=0.5):
+    # 等发布确认页预览渲染完成（最多等8秒）
+    jitter(8, 0.1)   # 固定等8秒，确保页面完全加载
+    for _ in range(20):
+        if not d(text="图片生成中").exists(timeout=0.3):
             break
-        jitter(0.5)
+        jitter(0.3)
 
     if publish_body:
         d.click(*s(540, 752)); jitter(0.5)   # 点击'添加正文'文本框
