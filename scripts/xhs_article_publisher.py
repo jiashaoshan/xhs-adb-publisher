@@ -27,7 +27,7 @@ ARTICLE_PROMPT = TEMPLATES_DIR / "article-prompt.md"
 MIN_BODY_LEN = 1800      # DeepSeek实际可达总字符数（含标点/emoji/空格）
                      # ≈ 2500纯汉字效果，因25%为标点/emoji/空格
 MAX_TITLE_LEN = 20       # 标题中文数
-MAX_XHS_BODY = 1000      # 小红书正文总长度
+MAX_XHS_BODY = 900       # 小红书正文总长度（发布确认页正文）
 MAX_RETRIES = 3
 
 def load_prompt() -> str:

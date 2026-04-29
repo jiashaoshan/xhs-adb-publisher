@@ -110,7 +110,13 @@ def xie_chang_wen(editor_body, publish_body="", title=""):
         except: pass
     btns = list(d(text="下一步", className="android.widget.TextView"))
     btns[-1].click() if btns else d.click(897, 2256)
-    jitter(2)
+    
+    # 等发布确认页预览渲染完成
+    for _ in range(30):
+        if not d(text="图片生成中").exists(timeout=0.5):
+            break
+        jitter(0.5)
+    
     if publish_body:
         d.click(540, 752); jitter(0.8)
         d.send_keys(publish_body); jitter(0.3)
