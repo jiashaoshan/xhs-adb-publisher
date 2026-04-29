@@ -16,12 +16,23 @@ def jitter(sec: float, ratio: float = 0.2) -> float:
     time.sleep(max(actual, 0.1))
     return actual
 
+# 参考屏幕尺寸 (OnePlus PGCM10)
+REF_W, REF_H = 1080, 2400
+_scale_x = _scale_y = 1.0
+
 def get_device():
-    global _DEVICE
+    global _DEVICE, _scale_x, _scale_y
     if _DEVICE is None:
         serial = os.environ.get("ANDROID_SERIAL")
         _DEVICE = u2.connect(serial) if serial else u2.connect()
+        info = _DEVICE.info
+        _scale_x = info['displayWidth'] / REF_W
+        _scale_y = info['displayHeight'] / REF_H
     return _DEVICE
+
+def s(x, y):
+    """按比例缩放坐标"""
+    return int(x * _scale_x), int(y * _scale_y)
 
 def home():
     get_device().press("home"); jitter(0.3)
@@ -39,12 +50,12 @@ def open_xhs():
     d = get_device()
     d.press("home"); jitter(0.5)
     d.app_start("com.xingin.xhs"); jitter(3, 0.1)
-    d.click(540, 2284); jitter(1.5)
+    d.click(*s(540, 2284)); jitter(1.5)
     return d
 
 def click_xie_wenzi(d=None):
     d = d or get_device()
-    d.click(540, 2079); jitter(1.5)
+    d.click(*s(540, 2079)); jitter(1.5)
 
 def card_style_to_publish(d=None):
     d = d or get_device()
@@ -55,42 +66,42 @@ def card_style_to_publish(d=None):
         jitter(0.5)
     btns = list(d(text="下一步", className="android.widget.TextView"))
     if btns: btns[-1].click()
-    else: d.click(897, 2226)
+    else: d.click(*s(897, 2226))
     jitter(2)
 
 def set_visibility_and_publish(d=None):
     d = d or get_device()
-    d.click(204, 1842); jitter(0.8)
+    d.click(*s(204, 1842)); jitter(0.8)
     jitter(0.3)
-    d.click(297, 2232); jitter(0.5)
+    d.click(*s(297, 2232)); jitter(0.5)
     jitter(0.5)
-    d.click(687, 2211); jitter(3)
+    d.click(*s(687, 2211)); jitter(3)
     for _ in range(3):
         d.press("home"); jitter(0.3)
 
 def xie_xie_fa(content, title="测试标题"):
     d = open_xhs()
     click_xie_wenzi(d)
-    d.click(540, 1000); jitter(0.3)
+    d.click(*s(540, 1000)); jitter(0.3)
     d.send_keys(content); jitter(0.3)
     btns = list(d(text="下一步", className="android.widget.TextView"))
-    btns[0].click() if btns else d.click(920, 176)
+    btns[0].click() if btns else d.click(*s(920, 176))
     card_style_to_publish(d)
-    d.click(562, 629); jitter(0.3)
+    d.click(*s(562, 629)); jitter(0.3)
     d.send_keys(title); jitter(0.3)
     set_visibility_and_publish(d)
 
 def xie_chang_wen(editor_body, publish_body="", title=""):
     d = open_xhs()
     click_xie_wenzi(d)
-    d.click(375, 1931); jitter(2)
+    d.click(*s(375, 1931)); jitter(2)
     if title:
-        d.click(200, 300); jitter(0.3)
+        d.click(*s(200, 300)); jitter(0.3)
         d.send_keys(title); jitter(0.3)
-    d.click(540, 600); jitter(0.3)
+    d.click(*s(540, 600)); jitter(0.3)
     d.send_keys(editor_body); jitter(0.3)
     logger.info("一键排版中...")
-    d.click(540, 2232); jitter(3)
+    d.click(*s(540, 2232)); jitter(3)
     templates = ["清晰明朗", "简约基础", "灵感备忘", "涂鸦马克", "素雅底纹"]
     for t in templates:
         try:
@@ -99,7 +110,7 @@ def xie_chang_wen(editor_body, publish_body="", title=""):
                 el.click(); logger.info(f"选择模板: {t}"); jitter(0.3); break
         except: pass
     btns = list(d(text="下一步", className="android.widget.TextView"))
-    btns[-1].click() if btns else d.click(897, 2256)
+    btns[-1].click() if btns else d.click(*s(897, 2256))
 
     # 等发布确认页预览渲染完成
     for _ in range(30):
@@ -114,15 +125,15 @@ def xie_chang_wen(editor_body, publish_body="", title=""):
             if el.exists(timeout=1):
                 el.click(); jitter(0.3)
             else:
-                d.click(540, 752); jitter(0.5)
+                d.click(*s(540, 752)); jitter(0.5)
         except:
-            d.click(540, 752); jitter(0.5)
+            d.click(*s(540, 752)); jitter(0.5)
 
         d.send_keys(publish_body); jitter(0.5)
         
         # 关闭AI自动生成正文小结框（输入正文后才会出现）
         # × 位置: [954,1244][1080,1324]
-        d.click(1017, 1284); jitter(0.3)
+        d.click(*s(1017, 1284)); jitter(0.3)
 
     set_visibility_and_publish(d)
     
