@@ -111,26 +111,28 @@ def xie_chang_wen(editor_body, publish_body="", title=""):
     btns = list(d(text="下一步", className="android.widget.TextView"))
     btns[-1].click() if btns else d.click(897, 2256)
     
-    # 等发布确认页预览渲染完成
+    # 等发布确认页预览渲染完成（包括正文图片生成）
     for _ in range(30):
         if not d(text="图片生成中").exists(timeout=0.5):
             break
         jitter(0.5)
     
-    # 关闭可能出现的AI匹配弹窗（如果有的话）
-    close_words = ["关闭", "知道了", "x", "×", "跳过", "不用了"]
-    for w in close_words:
-        try:
-            el = d(text=w)
-            if el.exists(timeout=0.5):
-                el.click()
-                logger.info(f"关闭弹窗: {w}")
-                jitter(0.3)
-                break
-        except:
-            pass
-    
     if publish_body:
+        # 先录入小红书正文
         d.click(540, 752); jitter(0.8)
-        d.send_keys(publish_body); jitter(0.3)
+        d.send_keys(publish_body); jitter(0.5)
+        
+        # 关闭AI自动匹配弹出框（输入正文后可能出现）
+        close_words = ["关闭", "知道了", "x", "×", "跳过", "不用了"]
+        for w in close_words:
+            try:
+                el = d(text=w)
+                if el.exists(timeout=0.5):
+                    el.click()
+                    logger.info(f"关闭弹窗: {w}")
+                    jitter(0.3)
+                    break
+            except:
+                pass
+    
     set_visibility_and_publish(d)
