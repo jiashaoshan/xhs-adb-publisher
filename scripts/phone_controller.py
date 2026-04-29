@@ -117,6 +117,19 @@ def xie_chang_wen(editor_body, publish_body="", title=""):
             break
         jitter(0.5)
     
+    # 关闭可能出现的AI匹配弹窗（如果有的话）
+    close_words = ["关闭", "知道了", "x", "×", "跳过", "不用了"]
+    for w in close_words:
+        try:
+            el = d(text=w)
+            if el.exists(timeout=0.5):
+                el.click()
+                logger.info(f"关闭弹窗: {w}")
+                jitter(0.3)
+                break
+        except:
+            pass
+    
     if publish_body:
         d.click(540, 752); jitter(0.8)
         d.send_keys(publish_body); jitter(0.3)
