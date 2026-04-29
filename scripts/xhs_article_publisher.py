@@ -24,9 +24,10 @@ CONFIG_DIR = SKILL_DIR / "config"
 PUBLISHED_FILE = DATA_DIR / "published-articles.json"
 ARTICLE_PROMPT = TEMPLATES_DIR / "article-prompt.md"
 
-MIN_BODY_LEN = 2500
-MAX_TITLE_LEN = 20
-MAX_XHS_BODY = 1000
+MIN_BODY_LEN = 1800      # DeepSeek实际可达总字符数（含标点/emoji/空格）
+                     # ≈ 2500纯汉字效果，因25%为标点/emoji/空格
+MAX_TITLE_LEN = 20       # 标题中文数
+MAX_XHS_BODY = 1000      # 小红书正文总长度
 MAX_RETRIES = 3
 
 def load_prompt() -> str:
@@ -49,8 +50,8 @@ def save_published(entry: dict):
     PUBLISHED_FILE.write_text(json.dumps(records, ensure_ascii=False, indent=2))
 
 def _chars(s: str) -> int:
-    """统计中文字数（去除Emoji和英文符号）"""
-    return sum(1 for c in s if '\u4e00' <= c <= '\u9fff' or '\u3000' <= c <= '\u303f' or '\uff00' <= c <= '\uffef')
+    """统计总字符数（一个中文字=1，一个Emoji=1，一个标点=1）"""
+    return len(s.strip())
 
 def _enforce_limits(title: str, body: str) -> tuple:
     """强制限制: 标题≤20字, 小红书正文≤1000字"""
@@ -91,16 +92,17 @@ def _retry_llm(prompt_template: str, product_url: str, product_name: str,
         title = result.get("title", "")
         body = result.get("body", "")
         
+        total_len = len(body.strip())
         logger.info(f"  LLM返回: 标题{_chars(title)}字 正文{_chars(body)}字")
         
-        # 校验
-        if _chars(body) >= MIN_BODY_LEN:
+        # 校验总长度（含标点/emoji）
+        if total_len >= MIN_BODY_LEN:
             return {"title": title, "body": body, "retries": attempt}
         
         if attempt < MAX_RETRIES:
-            logger.warning(f"  正文仅{_chars(body)}字，不足{MIN_BODY_LEN}，重试...")
+            logger.warning(f"  正文仅{total_len}字符，不足{MIN_BODY_LEN}，重试...")
     
-    logger.warning(f"  已重试{MAX_RETRIES}次仍不足{MIN_BODY_LEN}字，使用当前结果")
+    logger.warning(f"  已重试{MAX_RETRIES}次仍不足{MIN_BODY_LEN}字符，使用当前结果")
     return {"title": title, "body": body, "retries": MAX_RETRIES}
 
 def generate_article(product_url: str, product_name: str = "",
@@ -124,7 +126,7 @@ def generate_article(product_url: str, product_name: str = "",
         "product_url": product_url,
         "generated_at": datetime.now().isoformat(),
         "llm_retries": gen["retries"],
-        "total_chars": _chars(gen["body"]),
+        "total_chars": len(gen["body"].strip()),
     }
 
 def run(product_url: str, product_name: str = "", target_audience: str = "",
