@@ -108,10 +108,6 @@ def xie_chang_wen(editor_body, publish_body="", title=""):
         jitter(0.5)
 
     if publish_body:
-        # 先关闭AI自动生成正文小结框（如果有，在输入框下方）
-        # 点击右下角×位置: [987,1244][1080,1324]
-        d.click(1033, 1284); jitter(0.3)
-        
         # 找到并点击正文输入框
         try:
             el = d(text="添加正文")
@@ -123,6 +119,10 @@ def xie_chang_wen(editor_body, publish_body="", title=""):
             d.click(540, 752); jitter(0.5)
 
         d.send_keys(publish_body); jitter(0.5)
+        
+        # 关闭AI自动生成正文小结框（输入正文后才会出现）
+        # × 位置: [954,1244][1080,1324]
+        d.click(1017, 1284); jitter(0.3)
 
     set_visibility_and_publish(d)
     
