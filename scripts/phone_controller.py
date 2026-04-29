@@ -133,7 +133,7 @@ def xie_chang_wen(editor_body, publish_body="", title=""):
         
         # 关闭AI自动生成正文小结框（输入正文后才会出现）
         # × 位置: [954,1244][1080,1324]
-        d.click(*s(1017, 1284)); jitter(0.3)
+        d.click(*s(1055, 1284)); jitter(0.3)
 
     set_visibility_and_publish(d)
     
