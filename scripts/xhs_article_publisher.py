@@ -1,21 +1,19 @@
 """
 小红书文章发布模块
 功能:
-  1. LLM 根据产品链接生成小红书笔记
-  2. Pexels 自动配图
+  1. LLM 根据产品链接生成小红书笔记（≥2500字校验）
+  2. 标题≤20字 / 小红书正文≤1000字 自动截断
   3. ADB 自动发布长文
 """
-import json, logging, os, sys, time
+import json, logging, os, sys, re
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
 
 SCRIPT_DIR = Path(__file__).parent.absolute()
 SKILL_DIR = SCRIPT_DIR.parent
 sys.path.insert(0, str(SCRIPT_DIR))
 
-from xhs_llm import call_llm_json, get_api_key
-from pexels_images import download_images_for_topic
+from xhs_llm import call_llm_json
 from phone_controller import xie_chang_wen
 
 logger = logging.getLogger("xhs-publisher")
@@ -26,85 +24,98 @@ CONFIG_DIR = SKILL_DIR / "config"
 PUBLISHED_FILE = DATA_DIR / "published-articles.json"
 ARTICLE_PROMPT = TEMPLATES_DIR / "article-prompt.md"
 
+MIN_BODY_LEN = 2500
+MAX_TITLE_LEN = 20
+MAX_XHS_BODY = 1000
+MAX_RETRIES = 3
+
 def load_prompt() -> str:
-    """加载文章生成提示词模板"""
-    if ARTICLE_PROMPT.exists():
-        with open(ARTICLE_PROMPT) as f:
-            return f.read()
-    return ""
+    fp = ARTICLE_PROMPT
+    return fp.read_text(encoding="utf-8") if fp.exists() else ""
 
 def load_config() -> dict:
-    """加载发布配置"""
-    cfg_file = CONFIG_DIR / "publish.json"
-    if cfg_file.exists():
-        with open(cfg_file) as f:
-            return json.load(f)
-    return {}
+    fp = CONFIG_DIR / "publish.json"
+    return json.loads(fp.read_text()) if fp.exists() else {}
 
 def load_published() -> list:
-    """加载发布历史"""
     if PUBLISHED_FILE.exists():
-        with open(PUBLISHED_FILE) as f:
-            return json.load(f)
+        return json.loads(PUBLISHED_FILE.read_text())
     return []
 
 def save_published(entry: dict):
-    """保存发布记录"""
     records = load_published()
     records.append(entry)
     DATA_DIR.mkdir(parents=True, exist_ok=True)
-    with open(PUBLISHED_FILE, "w") as f:
-        json.dump(records, f, ensure_ascii=False, indent=2)
+    PUBLISHED_FILE.write_text(json.dumps(records, ensure_ascii=False, indent=2))
+
+def _chars(s: str) -> int:
+    """统计中文字数（去除Emoji和英文符号）"""
+    return sum(1 for c in s if '\u4e00' <= c <= '\u9fff' or '\u3000' <= c <= '\u303f' or '\uff00' <= c <= '\uffef')
+
+def _enforce_limits(title: str, body: str) -> tuple:
+    """强制限制: 标题≤20字, 小红书正文≤1000字"""
+    # 标题限制
+    if len(title) > MAX_TITLE_LEN * 2:  # 粗略保护
+        title = title[:MAX_TITLE_LEN * 2]
+    
+    # 分割正文
+    split_point = max(len(body) - MAX_XHS_BODY, len(body) // 2)
+    editor_body = body[:split_point]
+    xhs_body = body[split_point:][:MAX_XHS_BODY]
+    
+    return title.strip(), editor_body.strip(), xhs_body.strip()
+
+def _retry_llm(prompt_template: str, product_url: str, product_name: str,
+               target_audience: str) -> dict:
+    """带重试的 LLM 调用，确保正文≥2500字"""
+    prompt = prompt_template.replace("{{product_url}}", product_url)
+    prompt = prompt.replace("{{product_name}}", product_name or product_url)
+    prompt = prompt.replace("{{target_audience}}", target_audience)
+
+    for attempt in range(1, MAX_RETRIES + 1):
+        logger.info(f"LLM 生成第 {attempt}/{MAX_RETRIES} 次...")
+        
+        # 追加长度要求（越往后越严厉）
+        length_hint = ""
+        if attempt == 2:
+            length_hint = "\n⚠️ 上次输出不足2500字！正文长度必须≥2500字！请大幅扩充内容！"
+        elif attempt == 3:
+            length_hint = "\n⚠️ 正文必须≥2500字（约120-150个段落）！请写出更多细节、场景、案例！一定不要偷懒！"
+        
+        result = call_llm_json(
+            system_prompt=f"你是一个专业的小红书内容创作者。{length_hint}严格按照用户要求输出JSON格式。",
+            user_prompt=prompt + length_hint,
+            max_tokens=16384,
+        )
+        
+        title = result.get("title", "")
+        body = result.get("body", "")
+        
+        logger.info(f"  LLM返回: 标题{_chars(title)}字 正文{_chars(body)}字")
+        
+        # 校验
+        if _chars(body) >= MIN_BODY_LEN:
+            return {"title": title, "body": body, "retries": attempt}
+        
+        if attempt < MAX_RETRIES:
+            logger.warning(f"  正文仅{_chars(body)}字，不足{MIN_BODY_LEN}，重试...")
+    
+    logger.warning(f"  已重试{MAX_RETRIES}次仍不足{MIN_BODY_LEN}字，使用当前结果")
+    return {"title": title, "body": body, "retries": MAX_RETRIES}
 
 def generate_article(product_url: str, product_name: str = "",
                      target_audience: str = "") -> dict:
-    """LLM 生成小红书文章"""
+    """LLM 生成小红书文章（带校验+重试）"""
+    config = load_config()
     prompt_template = load_prompt()
     if not prompt_template:
         raise FileNotFoundError(f"提示词模板未找到: {ARTICLE_PROMPT}")
     
-    config = load_config()
     if not target_audience:
         target_audience = config.get("target_audience", "创业者、技术人")
     
-    user_prompt = prompt_template.replace("{{product_url}}", product_url)
-    user_prompt = user_prompt.replace("{{product_name}}", product_name or product_url)
-    user_prompt = user_prompt.replace("{{target_audience}}", target_audience)
-    
-    logger.info(f"正在调用 LLM 生成文章...")
-    result = call_llm_json(
-        system_prompt="你是一个专业的小红书内容创作者。文章正文需2500字左右，内容要详细、有血有肉。严格按照用户要求输出JSON格式。",
-        user_prompt=user_prompt,
-        max_tokens=16384,
-    )
-    
-    title = result.get("title", config.get("default_title", "AI工具实测分享"))
-    body = result.get("body", "")
-    
-    # 截断标题不超过20字符
-    import re
-    title_clean = re.sub(r'[\U00010000-\U0010ffff]', '', title)  # 去emoji数实际字数
-    if sum(1 for c in title if ord(c) > 127 or '\u4e00' <= c <= '\u9fff') > 20:
-        # 如果中文字超过20个，截断
-        title = title[:22] + "…"
-    
-    # 分割正文 → 编辑器正文(2500字) + 小红书正文(1000字)
-    target_editor = config.get("editor_body_target_chars", 2500)
-    target_xhs = config.get("xhs_body_max_chars", 1000)
-    
-    if len(body) <= target_xhs:
-        # 正文太短，全部给小红书正文
-        editor_body = body
-        xhs_body = body
-    elif len(body) <= target_editor + target_xhs:
-        # 不够2500+1000，按比例分
-        split_at = max(len(body) - target_xhs, len(body) // 2)
-        editor_body = body[:split_at]
-        xhs_body = body[split_at:]
-    else:
-        # 足够长，按标准切
-        editor_body = body[:target_editor]
-        xhs_body = body[target_editor:target_editor+target_xhs]
+    gen = _retry_llm(prompt_template, product_url, product_name, target_audience)
+    title, editor_body, xhs_body = _enforce_limits(gen["title"], gen["body"])
     
     return {
         "title": title,
@@ -112,36 +123,14 @@ def generate_article(product_url: str, product_name: str = "",
         "xhs_body": xhs_body,
         "product_url": product_url,
         "generated_at": datetime.now().isoformat(),
+        "llm_retries": gen["retries"],
+        "total_chars": _chars(gen["body"]),
     }
-
-def download_images(topic: str, count: int = 3) -> list:
-    """下载配图"""
-    images = download_images_for_topic(topic, count)
-    if not images:
-        logger.warning("未下载到配图，将发布纯文字笔记")
-    return images
-
-def publish_to_xhs(article_data: dict) -> dict:
-    """通过 ADB 发布到小红书"""
-    logger.info(f"发布笔记: {article_data['title']}")
-    xie_chang_wen(
-        editor_body=article_data["editor_body"],
-        publish_body=article_data["xhs_body"],
-        title=article_data["title"],
-    )
-    record = {
-        "title": article_data["title"],
-        "product_url": article_data["product_url"],
-        "published_at": datetime.now().isoformat(),
-        "type": "长文",
-    }
-    save_published(record)
-    return record
 
 def run(product_url: str, product_name: str = "", target_audience: str = "",
         dry_run: bool = False) -> dict:
     """
-    完整发布流程: LLM生成 → Pexels配图 → ADB发布
+    完整发布流程: LLM生成（≥2500字校验）→ ADB发布
     
     Args:
         product_url: 产品链接
@@ -151,32 +140,38 @@ def run(product_url: str, product_name: str = "", target_audience: str = "",
     """
     result = {"status": "started", "steps": []}
     
-    # 步骤1: LLM 生成文章
-    logger.info("步骤1/3: LLM 生成文章...")
+    # 步骤1: LLM 生成
+    logger.info("步骤1/2: LLM 生成文章...")
     article = generate_article(product_url, product_name, target_audience)
     result["article"] = article
-    result["steps"].append({"step": "llm_generate", "status": "ok", "title": article["title"]})
+    result["steps"].append({"step": "llm_generate", "status": "ok",
+                            "retries": article.get("llm_retries", 1)})
     logger.info(f"  标题: {article['title']}")
     logger.info(f"  编辑器正文: {len(article['editor_body'])}字")
     logger.info(f"  小红书正文: {len(article['xhs_body'])}字")
-    
-    # 步骤2: Pexels 配图
-    logger.info("步骤2/3: 搜索配图...")
-    topic = product_name or product_url.split("//")[-1].split("/")[0]
-    images = download_images(topic)
-    result["images"] = images
-    result["steps"].append({"step": "pexels_images", "status": "ok" if images else "skipped", "count": len(images)})
-    logger.info(f"  下载了 {len(images)} 张图片")
+    logger.info(f"  总字数: {article.get('total_chars', 0)} (重试{article.get('llm_retries', 1)}次)")
     
     if dry_run:
         result["status"] = "dry_run"
-        logger.info("DRY RUN 模式，跳过发布")
         return result
     
-    # 步骤3: ADB 发布
-    logger.info(f"步骤3/3: ADB 发布到小红书...")
+    # 步骤2: ADB 发布
+    logger.info(f"步骤2/2: ADB 发布到小红书...")
     try:
-        record = publish_to_xhs(article)
+        logger.info(f"发布笔记: {article['title']}")
+        xie_chang_wen(
+            editor_body=article["editor_body"],
+            publish_body=article["xhs_body"],
+            title=article["title"],
+        )
+        record = {
+            "title": article["title"],
+            "product_url": article["product_url"],
+            "published_at": datetime.now().isoformat(),
+            "type": "长文",
+            "total_chars": article["total_chars"],
+        }
+        save_published(record)
         result["record"] = record
         result["status"] = "published"
         logger.info(f"✅ 发布成功: {article['title']}")
