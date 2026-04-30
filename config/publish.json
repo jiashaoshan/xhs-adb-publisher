@@ -9,5 +9,23 @@
     "app_launch": 3,
     "page_transition": 1.5,
     "publish_complete": 2.5
+  },
+  "acquisition": {
+    "_说明": "评论区获客配置",
+    "product_name": "",
+    "product_url": "",
+    "max_comments_per_run": 5,
+    "max_comments_per_day": 20,
+    "max_comments_per_hour": 5,
+    "min_interval_seconds": 60,
+    "base_interval_seconds": 180,
+    "jitter_ratio": 0.3,
+    "active_hours": [8, 23],
+    "sort_by": "综合",
+    "note_type": "不限",
+    "max_search_per_keyword": 15,
+    "max_keywords_per_run": 5,
+    "max_scored_candidates": 30,
+    "auto_generate_keywords": true
   }
 }
