@@ -83,13 +83,13 @@ def cmd_acquire(args):
 def cmd_write_thought(args):
     """直接写想法"""
     from phone_controller import xie_xie_fa
-    xie_xie_fa(args.content, args.title or "测试标题")
-    print(f"✅ 写想法已发布: {args.content[:20]}")
+    xie_xie_fa(args.write_thought, args.title or "测试标题")
+    print(f"✅ 写想法已发布: {args.write_thought[:20]}")
 
 def cmd_write_long(args):
     """直接写长文"""
     from phone_controller import xie_chang_wen
-    xie_chang_wen(args.editor_body, args.xhs_body or "", args.title or "")
+    xie_chang_wen(args.write_long, args.xhs_body or "", args.title or "")
     print(f"✅ 写长文已发布")
 
 def main():

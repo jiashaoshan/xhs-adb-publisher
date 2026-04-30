@@ -1,0 +1,20 @@
+[
+  {
+    "serial": "R3CN80XXXXX",
+    "note": "华为P40 - 账号A（科技类内容）",
+    "product_url": "https://product-a.com",
+    "product_name": "产品A"
+  },
+  {
+    "serial": "R3CN80YYYYY",
+    "note": "小米13 - 账号B（生活类内容）",
+    "product_url": "https://product-b.com",
+    "product_name": "产品B"
+  },
+  {
+    "serial": "R3CN80ZZZZZ",
+    "note": "一加12 - 账号C（效率工具类）",
+    "product_url": "https://product-c.com",
+    "product_name": "产品C"
+  }
+]
