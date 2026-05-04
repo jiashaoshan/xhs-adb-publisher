@@ -25,7 +25,7 @@ export XHS_MCP_URL=http://localhost:18060  # MCP 服务地址（评论区获客�
 |------|------|
 | ① | 开启「开发者选项」和「USB 调试」 |
 | ② | 连接电脑 USB，信任 RSA 指纹 |
-| ③ | 安装 ATX Keyboard（`uiautomator2` 会自动装，或手动装） |
+| ③ | 安装 ATX Keyboard（`uiautomator2 init` 会自动装） |
 | ④ | **设置 → 其他设置 → 键盘与输入法 → 默认输入法 → 选 ATX Keyboard** |
 
 > ⚠️ ATX Keyboard 必须设为**默认输入法**，否则中文输入无法工作。仅「启用」不够。
@@ -59,20 +59,24 @@ python3 xhs_adb_publisher.py --write-thought "正文" --title "标题"
 ### 写长文（完整流程）
 
 ```
-桌面 → 打开小红书 → 点击底部+号 → 点击写文字 → 点击写长文
-→ 输入标题 + 输入编辑器正文
-→ 点击一键排版 → 选默认排版模板
-→ 等待 8s（预览渲染）→ 点击下一步 → 进入发布确认页
-→ 点击"添加正文"文本框 → 输入小红书正文(≤900字)
-→ 公开可见 → 仅自己可见 → 发布笔记
-→ 关闭小红书后台 → 回到桌面
+桌面 → 打开小红书 → 处理草稿弹窗(如有) → 点击底部+号
+→ 点击写文字(文本查找) → 点击写长文(文本查找)
+→ 输入标题 + 分批发送编辑器正文(每批500字)
+→ 点击一键排版(文本查找)
+→ 等待 24s（含±20%随机抖动，确保排版渲染完成）
+→ 点击下一步(文本查找) → 进入模板选择页
+→ 再等待渲染完成 → 再次点击下一步(文本查找) → 进入发布确认页
+→ 点击"添加正文"/"添加正文或发语音"(文本查找) → 输入小红书正文(≤1000字)
+→ 点击"公开可见"(文本查找) → 选择"仅自己可见"(文本查找)
+→ 点击"发布笔记"(文本查找)
+→ 等待 8s（发布动画播放）→ 按3次home键回到桌面
 ```
 
 ### 写想法（纯文字）
 
 ```
-桌面 → 打开小红书 → 点击+号 → 写文字 → 输入内容
-→ 下一步 → 等卡片预览渲染 → 下一步
+桌面 → 打开小红书 → 点击+号 → 写文字(文本查找) → 输入内容
+→ 下一步(文本查找) → 等卡片预览渲染 → 下一步(文本查找)
 → 添加标题 → 仅自己可见 → 发布 → 回桌面
 ```
 
@@ -83,11 +87,11 @@ python3 xhs_adb_publisher.py --write-thought "正文" --title "标题"
 ```
 xhs-adb-publisher/
 ├── xhs_adb_publisher.py           ← CLI 入口
-├── batch_publisher.py             ← 多设备批量发布
+├── batch_publisher.py             ← 多设备并发发布入口
 ├── android_ctl.py                 ← 旧版 CLI（兼容）
 ├── SKILL.md                       ← OpenClaw 技能定义
 ├── scripts/
-│   ├── phone_controller.py        ← ADB 手机操控核心（~130行）
+│   ├── phone_controller.py        ← ADB 手机操控核心（文本查找为主，坐标fallback）
 │   ├── xhs_article_publisher.py   ← 文章发布 (LLM→ADB)
 │   ├── xhs_comment_acquisition.py ← 评论区获客 (MCP+LLM)
 │   ├── xhs_llm.py                 ← DeepSeek API 封装
@@ -133,22 +137,23 @@ xhs_adb_publisher.py (CLI)
 | `ADB` | Android Debug Bridge 连接通道 |
 | `xiaohongshu-mcp` | 小红书 MCP 服务（评论区获客）|
 
-### 坐标系统
+### 元素定位方式
 
-基于 1080×2400 屏幕，自动按比例缩放适配其他分辨率。
+**优先使用文本查找**，坐标仅作为 fallback 兜底：
 
-| 页面 | 元素 | 参考坐标 |
-|------|------|:--------:|
-| 主页 | 底部+号 | (540, 2284) |
-| 发布页 | 写文字 | (540, 2079) |
-| 写长文入口 | 写长文按钮 | (375, 1931) |
-| 编辑页 | 一键排版 | (540, 2232) |
-| 卡片样式 | 下一步(底) | (897, 2226) |
-| 模板选择 | 下一步(底) | (897, 2256) |
-| 发布确认 | 添加正文 | (540, 752) |
-| 发布确认 | 公开可见 | (204, 1842) |
-| 发布确认 | 仅自己可见 | (297, 2232) |
-| 发布确认 | 发布笔记 | (687, 2211) |
+| 页面 | 操作 | 定位方式 | fallback |
+|------|------|:--------:|:--------:|
+| 启动 | 处理草稿弹窗 | `textContains`("存草稿"/"不保存") | - |
+| 首页 | 点击底部+号 | 坐标(屏幕居中底部) | - |
+| +号菜单 | 写文字 | `d(text="写文字")` | 坐标 |
+| 二级菜单 | 写长文 | `d(text="写长文")` | - |
+| 编辑页 | 输入标题 | `d(text="输入标题")` | - |
+| 编辑页 | 一键排版 | `d(text="一键排版")` | - |
+| 模板选择页 | 下一步 | `d(text="下一步")` | - |
+| 发布确认页 | 添加正文 | `textContains`("添加正文"/"添加正文或发语音") | 坐标 |
+| 发布确认页 | 公开可见 | `d(textContains="公开可见")` | 坐标 |
+| 发布确认页 | 仅自己可见 | `d(text="仅自己可见")` | 坐标 |
+| 发布确认页 | 发布笔记 | `d(text="发布笔记")` | 坐标 |
 
 ---
 
@@ -158,6 +163,7 @@ xhs_adb_publisher.py (CLI)
 
 - `deepseek-v4-flash`（V4 系列，输出上限 384K tokens）
 - 环境变量 `DEEPSEEK_API_KEY` 配置 API Key
+- 环境变量 `LLM_API_URL` 可自定义 API 地址（默认 `https://api.deepseek.com/chat/completions`）
 
 ### 校验规则
 
@@ -171,8 +177,30 @@ xhs_adb_publisher.py (CLI)
 ### 输出分割
 
 LLM 返回的正文自动切分为两部分：
-- **编辑器正文**（前半段）→ 写长文编辑器显示
-- **小红书正文**（后半段 ≤900字）→ 发布确认页"添加正文"文本框
+- **编辑器正文**（全部内容）→ 写长文编辑器显示
+- **小红书正文**（前 1000 字）→ 发布确认页"添加正文"文本框
+
+---
+
+## 多设备并发
+
+```bash
+# 指定设备列表
+python3 batch_publisher.py --devices "SERIAL1,SERIAL2" \
+  --product-url "https://example.com"
+
+# 使用配置文件
+python3 batch_publisher.py --config config/devices.json \
+  --product-url "https://example.com"
+
+# 自动发现
+python3 batch_publisher.py --auto-discover \
+  --product-url "https://example.com"
+
+# 控制并发数
+python3 batch_publisher.py --devices "SERIAL1,SERIAL2" \
+  --concurrency 2 --product-url "https://example.com"
+```
 
 ---
 
@@ -207,11 +235,14 @@ adb shell settings get secure default_input_method
 # 应返回: com.github.uiautomator/.AdbKeyboard
 ```
 
-### Q: 换了手机不兼容
-脚本会自动按比例缩放坐标，确保 `ANDROID_SERIAL` 设置正确。
+### Q: 两台手机并行时报 "more than one device"
+设置环境变量 `ANDROID_SERIAL` 指定目标设备，或使用 `batch_publisher.py` 配合 `--config` 参数。
 
 ### Q: 发布确认页卡住
-脚本内置了 8s 固定等待 + 图片生成中检测，确保预览渲染完成后再操作。
+脚本内置了 24s 固定等待 +"图片生成中"检测，确保预览渲染完成后再操作。如果仍然卡住，可能是小红书本版更新后控件文本变了，可探查当前页面文本后更新 `phone_controller.py` 中的查找字符串。
+
+### Q: `DEEPSEEK_API_KEY` 在哪里配置？
+可通过环境变量设置，或在 `~/.openclaw/openclaw.json` 的 `env` 段配置。
 
 ---
 
