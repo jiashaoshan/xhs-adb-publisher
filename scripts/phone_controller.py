@@ -115,8 +115,8 @@ def set_visibility_and_publish(device: u2.Device = None):
         sh = d.info.get('displayHeight', REF_H)
         d.click(int(sw * 0.65), int(sh * 0.92))
         logger.info("坐标点击发布")
-    jitter(5)
-    for _ in range(5):
+    jitter(8)
+    for _ in range(3):
         d.press("home"); jitter(0.3)
 
 def xie_xie_fa(content: str, title: str = "测试标题", serial: str = None):
