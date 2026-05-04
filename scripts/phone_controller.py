@@ -22,6 +22,13 @@ def jitter(sec: float, ratio: float = 0.2) -> float:
 
 REF_W, REF_H = 1080, 2400
 
+def _scale(d: u2.Device, x: int, y: int) -> tuple:
+    """按比例缩放坐标到目标设备分辨率"""
+    info = d.info
+    sw = info.get('displayWidth', REF_W)
+    sh = info.get('displayHeight', REF_H)
+    return int(x * sw / REF_W), int(y * sh / REF_H)
+
 def get_device(serial: str = None) -> u2.Device:
     global _device_pool, _device_pool_lock
     serial = serial or os.environ.get("ANDROID_SERIAL")
@@ -84,26 +91,28 @@ def card_style_to_publish(device: u2.Device = None):
 
 def set_visibility_and_publish(device: u2.Device = None):
     d = device or get_device()
-    # 点击可见性设置区（"公开可见"在底部第一行）
-    for txt in ["公开可见", "仅自己可见"]:
-        el = d(text=txt)
-        if el.exists(timeout=1):
-            el.click(); logger.info(f"点击可见性: {txt}"); break
+    # 点击可见性设置区（"公开可见"文本）
+    el = d(textContains="公开可见")
+    if el.exists(timeout=2):
+        el.click(); logger.info("点击: 公开可见")
+    else:
+        # fallback到坐标
+        d.click(*_scale(d, 204, 1842)); logger.info("坐标点击可见性")
     jitter(1)
     # 弹出菜单中选择"仅自己可见"
-    for txt in ["仅自己可见"]:
-        el = d(text=txt)
-        if el.exists(timeout=1):
-            el.click(); logger.info(f"选择: {txt}"); break
+    el = d(text="仅自己可见")
+    if el.exists(timeout=2):
+        el.click(); logger.info("选择: 仅自己可见")
+    else:
+        d.click(*_scale(d, 297, 2232)); logger.info("坐标选择可见性")
     jitter(0.5)
-    # 点击"发布笔记"按钮（Button类型，文本为"发布笔记"）
+    # 点击"发布笔记"按钮
     el = d(text="发布笔记")
     if el.exists(timeout=2):
         el.click(); logger.info("点击: 发布笔记")
     else:
-        # fallback
-        sw = d.info.get('displayWidth', 1080)
-        sh = d.info.get('displayHeight', 2400)
+        sw = d.info.get('displayWidth', REF_W)
+        sh = d.info.get('displayHeight', REF_H)
         d.click(int(sw * 0.65), int(sh * 0.92))
         logger.info("坐标点击发布")
     jitter(3)
