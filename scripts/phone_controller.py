@@ -154,21 +154,43 @@ def xie_chang_wen(editor_body: str, publish_body: str = "", title: str = "",
         d.send_keys(chunk); jitter(0.2)
     jitter(0.3)
     logger.info("一键排版中...")
-    # 点击一键排版
     el = d(text="一键排版")
     if el.exists(timeout=3):
         el.click()
-    jitter(3)
-    # 等待第一个预览页渲染完成，点击"下一步"
-    for _ in range(30):
+    # 等待"图片生成中"提示出现
+    for _ in range(10):
+        if d(text="图片生成中").exists(timeout=0.3):
+            break
+        jitter(0.3)
+    # 等待渲染完成
+    for _ in range(40):
         if not d(text="图片生成中").exists(timeout=0.5):
             break
         jitter(0.5)
+    jitter(1)
+    # 点击"下一步"
     for _ in range(10):
         btns = list(d(text="下一步"))
         if btns:
-            btns[-1].click(); break
+            btns[-1].click(); logger.info("点击下一步"); break
+        # 同时检查是否有"选择喜欢的排版" - 如果有说明还在模板页
+        if d(textContains="选择喜欢的排版").exists(timeout=0.3):
+            logger.info("仍在模板选择页，再点一次模板")
+            for t in ["涂鸦马克"]:
+                el = d(text=t)
+                if el.exists(timeout=0.3):
+                    el.click(); break
+            break
         jitter(0.5)
+    # 如果还在模板选择页，再等渲染后点下一步
+    for _ in range(5):
+        if d(textContains="选择喜欢的排版").exists(timeout=0.3):
+            jitter(2)
+            btns = list(d(text="下一步"))
+            if btns:
+                btns[-1].click(); logger.info("模板页再点下一步"); break
+        else:
+            break
     # 等发布确认页渲染
     jitter(8, 0.1)
     for _ in range(20):
