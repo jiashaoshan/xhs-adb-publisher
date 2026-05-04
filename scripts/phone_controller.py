@@ -159,12 +159,11 @@ def xie_chang_wen(editor_body: str, publish_body: str = "", title: str = "",
     if el.exists(timeout=3):
         el.click()
     jitter(3)
-    # 选模板
-    for t in ["清晰明朗", "简约基础", "灵感备忘", "涂鸦马克", "素雅底纹"]:
-        el = d(text=t)
-        if el.exists(timeout=0.5):
-            el.click(); logger.info(f"选择模板: {t}"); jitter(0.3); break
-    # 下一步
+    # 等待第一个预览页渲染完成，点击"下一步"
+    for _ in range(30):
+        if not d(text="图片生成中").exists(timeout=0.5):
+            break
+        jitter(0.5)
     for _ in range(10):
         btns = list(d(text="下一步"))
         if btns:
