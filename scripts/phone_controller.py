@@ -211,10 +211,17 @@ def xie_chang_wen(editor_body: str, publish_body: str = "", title: str = "",
         jitter(0.3)
     # 发布确认页正文
     if publish_body:
-        el = d(text="添加正文")
+        el = d(textContains="添加正文")
         if el.exists(timeout=2):
             el.click(); jitter(0.5)
             d.send_keys(publish_body); jitter(0.5)
+            logger.info(f"输入发布确认页正文: {len(publish_body)}字")
+        else:
+            # fallback: 直接点击正文区域
+            sh = d.info.get('displayHeight', 2400)
+            d.click(int(d.info.get('displayWidth',1080))/2, int(sh*0.5))
+            jitter(0.3)
+            d.send_keys(publish_body); jitter(0.3)
     set_visibility_and_publish(d)
     d.app_stop('com.xingin.xhs')
     logger.info("关闭小红书后台")
