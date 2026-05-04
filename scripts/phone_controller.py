@@ -170,18 +170,16 @@ def xie_chang_wen(editor_body: str, publish_body: str = "", title: str = "",
     logger.info("一键排版中...")
     el = d(text="一键排版")
     if el.exists(timeout=3):
-        el.click()
-    # 等待"图片生成中"提示出现
-    for _ in range(10):
-        if d(text="图片生成中").exists(timeout=0.3):
-            break
-        jitter(0.3)
-    # 等待渲染完成
-    for _ in range(40):
+        el.click(); logger.info("点击一键排版")
+    # 固定等待15秒（确保排版渲染完成，包括生成封面和摘要）
+    logger.info("等待排版渲染中...")
+    jitter(15, 0.1)
+    # 额外等待"图片生成中"消失
+    for _ in range(20):
         if not d(text="图片生成中").exists(timeout=0.5):
             break
         jitter(0.5)
-    jitter(1)
+    jitter(2)
     # 点击"下一步"
     for _ in range(10):
         btns = list(d(text="下一步"))
