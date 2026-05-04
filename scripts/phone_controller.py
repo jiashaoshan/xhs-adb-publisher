@@ -211,9 +211,12 @@ def xie_chang_wen(editor_body: str, publish_body: str = "", title: str = "",
         jitter(0.3)
     # 发布确认页正文
     if publish_body:
-        el = d(textContains="添加正文")
-        if el.exists(timeout=2):
-            el.click(); jitter(0.5)
+        found = False
+        for txt in ["添加正文或发语音", "添加正文"]:
+            el = d(textContains=txt)
+            if el.exists(timeout=1):
+                el.click(); jitter(0.5); found = True; break
+        if found:
             d.send_keys(publish_body); jitter(0.5)
             logger.info(f"输入发布确认页正文: {len(publish_body)}字")
         else:
