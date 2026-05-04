@@ -26,7 +26,7 @@ ARTICLE_PROMPT = TEMPLATES_DIR / "article-prompt.md"
 
 MIN_BODY_LEN = 1200      # 最低字数要求（含标点/emoji/空格）
 MAX_TITLE_LEN = 20       # 标题中文数
-MAX_XHS_BODY = 900       # 小红书正文总长度（发布确认页正文）
+MAX_XHS_BODY = 1000      # 小红书正文总长度（发布确认页正文）
 MAX_RETRIES = 3
 
 def load_prompt() -> str:

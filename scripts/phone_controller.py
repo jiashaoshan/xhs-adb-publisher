@@ -84,23 +84,28 @@ def card_style_to_publish(device: u2.Device = None):
 
 def set_visibility_and_publish(device: u2.Device = None):
     d = device or get_device()
-    # 点击可见性设置
-    for txt in ["仅自己可见", "公开", "可见性"]:
-        el = d(textContains=txt)
+    # 点击可见性设置区（"公开可见"在底部第一行）
+    for txt in ["公开可见", "仅自己可见"]:
+        el = d(text=txt)
         if el.exists(timeout=1):
-            el.click(); break
-    jitter(0.8)
-    # 选"仅自己可见"
+            el.click(); logger.info(f"点击可见性: {txt}"); break
+    jitter(1)
+    # 弹出菜单中选择"仅自己可见"
     for txt in ["仅自己可见"]:
-        el = d(textContains=txt)
+        el = d(text=txt)
         if el.exists(timeout=1):
-            el.click(); break
+            el.click(); logger.info(f"选择: {txt}"); break
     jitter(0.5)
-    # 点击发布
-    for txt in ["发布"]:
-        el = d(textContains=txt)
-        if el.exists(timeout=1):
-            el.click(); break
+    # 点击"发布笔记"按钮（Button类型，文本为"发布笔记"）
+    el = d(text="发布笔记")
+    if el.exists(timeout=2):
+        el.click(); logger.info("点击: 发布笔记")
+    else:
+        # fallback
+        sw = d.info.get('displayWidth', 1080)
+        sh = d.info.get('displayHeight', 2400)
+        d.click(int(sw * 0.65), int(sh * 0.92))
+        logger.info("坐标点击发布")
     jitter(3)
     for _ in range(3):
         d.press("home"); jitter(0.3)
