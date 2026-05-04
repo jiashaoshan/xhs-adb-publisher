@@ -115,8 +115,8 @@ def set_visibility_and_publish(device: u2.Device = None):
         sh = d.info.get('displayHeight', REF_H)
         d.click(int(sw * 0.65), int(sh * 0.92))
         logger.info("坐标点击发布")
-    jitter(3)
-    for _ in range(3):
+    jitter(5)
+    for _ in range(5):
         d.press("home"); jitter(0.3)
 
 def xie_xie_fa(content: str, title: str = "测试标题", serial: str = None):
@@ -173,7 +173,7 @@ def xie_chang_wen(editor_body: str, publish_body: str = "", title: str = "",
         el.click(); logger.info("点击一键排版")
     # 固定等待15秒（确保排版渲染完成，包括生成封面和摘要）
     logger.info("等待排版渲染中...")
-    jitter(15, 0.1)
+    jitter(24, 0.1)
     # 额外等待"图片生成中"消失
     for _ in range(20):
         if not d(text="图片生成中").exists(timeout=0.5):
