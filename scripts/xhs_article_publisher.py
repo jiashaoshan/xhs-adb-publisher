@@ -24,8 +24,7 @@ CONFIG_DIR = SKILL_DIR / "config"
 PUBLISHED_FILE = DATA_DIR / "published-articles.json"
 ARTICLE_PROMPT = TEMPLATES_DIR / "article-prompt.md"
 
-MIN_BODY_LEN = 1800      # DeepSeek实际可达总字符数（含标点/emoji/空格）
-                     # ≈ 2500纯汉字效果，因25%为标点/emoji/空格
+MIN_BODY_LEN = 1200      # 最低字数要求（含标点/emoji/空格）
 MAX_TITLE_LEN = 20       # 标题中文数
 MAX_XHS_BODY = 900       # 小红书正文总长度（发布确认页正文）
 MAX_RETRIES = 3
@@ -54,15 +53,13 @@ def _chars(s: str) -> int:
     return len(s.strip())
 
 def _enforce_limits(title: str, body: str) -> tuple:
-    """强制限制: 标题≤20字, 小红书正文≤1000字"""
-    # 标题限制
-    if len(title) > MAX_TITLE_LEN * 2:  # 粗略保护
+    """强制限制: 标题≤20字"""
+    if len(title) > MAX_TITLE_LEN * 2:
         title = title[:MAX_TITLE_LEN * 2]
     
-    # 分割正文
-    split_point = max(len(body) - MAX_XHS_BODY, len(body) // 2)
-    editor_body = body[:split_point]
-    xhs_body = body[split_point:][:MAX_XHS_BODY]
+    # 编辑器正文放全部内容（写长文用），发布确认页取前MAX_XHS_BODY字作为摘要
+    editor_body = body
+    xhs_body = body[:MAX_XHS_BODY].strip()
     
     return title.strip(), editor_body.strip(), xhs_body.strip()
 
@@ -73,20 +70,24 @@ def _retry_llm(prompt_template: str, product_url: str, product_name: str,
     prompt = prompt.replace("{{product_name}}", product_name or product_url)
     prompt = prompt.replace("{{target_audience}}", target_audience)
 
+    total_len = 0
     for attempt in range(1, MAX_RETRIES + 1):
         logger.info(f"LLM 生成第 {attempt}/{MAX_RETRIES} 次...")
         
         # 追加长度要求（越往后越严厉）
         length_hint = ""
         if attempt == 2:
-            length_hint = "\n⚠️ 上次输出不足2500字！正文长度必须≥2500字！请大幅扩充内容！"
+            if total_len > 2000:
+                length_hint = "\n⚠️ 上次输出超过2000字！正文总字数（含标点空格）必须控制在1200-2000字！请缩减！"
+            else:
+                length_hint = "\n⚠️ 上次输出不足1200字！正文总字数（含标点空格）必须控制在1200-2000字！请扩充！"
         elif attempt == 3:
-            length_hint = "\n⚠️ 正文必须≥2500字（约120-150个段落）！请写出更多细节、场景、案例！一定不要偷懒！"
+            length_hint = "\n⚠️ 正文必须控制在1200-2000字！太短或太长都会被截断导致发布失败！"
         
         result = call_llm_json(
             system_prompt=f"你是一个专业的小红书内容创作者。{length_hint}严格按照用户要求输出JSON格式。",
             user_prompt=prompt + length_hint,
-            max_tokens=32768,
+            max_tokens=384000,
         )
         
         title = result.get("title", "")
@@ -95,12 +96,15 @@ def _retry_llm(prompt_template: str, product_url: str, product_name: str,
         total_len = len(body.strip())
         logger.info(f"  LLM返回: 标题{_chars(title)}字 正文{_chars(body)}字")
         
-        # 校验总长度（含标点/emoji）
-        if total_len >= MIN_BODY_LEN:
+        # 校验总长度（含标点/emoji），控制在1200-2000字
+        if MIN_BODY_LEN <= total_len <= 2000:
             return {"title": title, "body": body, "retries": attempt}
         
         if attempt < MAX_RETRIES:
-            logger.warning(f"  正文仅{total_len}字符，不足{MIN_BODY_LEN}，重试...")
+            if total_len < MIN_BODY_LEN:
+                logger.warning(f"  正文仅{total_len}字符，不足{MIN_BODY_LEN}，重试...")
+            else:
+                logger.warning(f"  正文{total_len}字符，超过2000字上限，重试...")
     
     logger.warning(f"  已重试{MAX_RETRIES}次仍不足{MIN_BODY_LEN}字符，使用当前结果")
     return {"title": title, "body": body, "retries": MAX_RETRIES}

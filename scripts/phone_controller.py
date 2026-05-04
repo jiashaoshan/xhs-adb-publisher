@@ -67,12 +67,24 @@ def open_xhs(device: u2.Device = None) -> u2.Device:
     d = device or get_device()
     d.press("home"); jitter(0.5)
     d.app_start("com.xingin.xhs"); jitter(3, 0.1)
+    # 关闭弹窗（如有草稿残留）
+    for txt in ["存草稿", "不保存"]:
+        el = d(textContains=txt)
+        if el.exists(timeout=1):
+            el.click(); jitter(1)
+            break
     d.click(*_scale(d, 540, 2284)); jitter(1.5)
     return d
 
 def click_xie_wenzi(device: u2.Device = None):
     d = device or get_device()
-    d.click(*_scale(d, 540, 2079)); jitter(1.5)
+    # 文本查找"写文字"
+    el = d(text="写文字")
+    if el.exists(timeout=1):
+        el.click()
+    else:
+        d.click(*_scale(d, 540, 2079))
+    jitter(1.5)
 
 def card_style_to_publish(device: u2.Device = None):
     d = device or get_device()

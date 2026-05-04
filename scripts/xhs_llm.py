@@ -3,7 +3,8 @@ from typing import Optional, Dict, Any
 
 logger = logging.getLogger(__name__)
 
-LLM_API_URL = "https://api.deepseek.com/chat/completions"
+LLM_API_URL = os.environ.get("LLM_API_URL", "https://api.deepseek.com/chat/completions")
+DEFAULT_MAX_TOKENS = 384000
 DEFAULT_MODEL = "deepseek-v4-flash"  # ← V4系列输出上限384K tokens
 DEFAULT_TIMEOUT = 180
 
@@ -29,7 +30,7 @@ def get_api_key() -> str:
     return key
 
 def call_llm(system_prompt: str, user_prompt: str, model: str = DEFAULT_MODEL,
-             temperature: float = 0.7, max_tokens: int = 4096,
+             temperature: float = 0.7, max_tokens: int = DEFAULT_MAX_TOKENS,
              response_format: Optional[Dict] = None,
              timeout: int = DEFAULT_TIMEOUT) -> str:
     api_key = get_api_key()
