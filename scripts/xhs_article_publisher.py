@@ -53,13 +53,20 @@ def _chars(s: str) -> int:
     return len(s.strip())
 
 def _enforce_limits(title: str, body: str) -> tuple:
-    """强制限制: 标题≤20字"""
+    """强制限制: 标题≤20字, xhs正文≤1000字（在句子边界截断）"""
     if len(title) > MAX_TITLE_LEN * 2:
         title = title[:MAX_TITLE_LEN * 2]
     
-    # 编辑器正文放全部内容（写长文用），发布确认页取前MAX_XHS_BODY字作为摘要
+    # 编辑器正文放全部内容
     editor_body = body
+    
+    # 发布确认页取前MAX_XHS_BODY字，在句子边界截断
     xhs_body = body[:MAX_XHS_BODY].strip()
+    if len(body) > MAX_XHS_BODY:
+        last_punct = max(xhs_body.rfind("。"), xhs_body.rfind("！"),
+                         xhs_body.rfind("？"), xhs_body.rfind("\n"))
+        if last_punct > len(xhs_body) * 0.5:  # 至少保留一半
+            xhs_body = xhs_body[:last_punct + 1]
     
     return title.strip(), editor_body.strip(), xhs_body.strip()
 
