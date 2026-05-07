@@ -52,23 +52,56 @@ def _chars(s: str) -> int:
     """统计总字符数（一个中文字=1，一个Emoji=1，一个标点=1）"""
     return len(s.strip())
 
-def _enforce_limits(title: str, body: str) -> tuple:
-    """强制限制: 标题≤20字, xhs正文≤1000字（在句子边界截断）"""
+def _enforce_limits(title: str, body: str, product_url: str = "", product_name: str = "") -> tuple:
+    """
+    强制限制:
+    - 标题 ≤ 20字
+    - 编辑器正文: 完整正文
+    - xhs正文: LLM 生成的精简版（≤1000字，非截断）+ 产品CTA
+    """
     if len(title) > MAX_TITLE_LEN * 2:
         title = title[:MAX_TITLE_LEN * 2]
-    
-    # 编辑器正文放全部内容
-    editor_body = body
-    
-    # 发布确认页取前MAX_XHS_BODY字，在句子边界截断
-    xhs_body = body[:MAX_XHS_BODY].strip()
-    if len(body) > MAX_XHS_BODY:
-        last_punct = max(xhs_body.rfind("。"), xhs_body.rfind("！"),
-                         xhs_body.rfind("？"), xhs_body.rfind("\n"))
-        if last_punct > len(xhs_body) * 0.5:  # 至少保留一半
-            xhs_body = xhs_body[:last_punct + 1]
-    
-    return title.strip(), editor_body.strip(), xhs_body.strip()
+    editor_body = body.strip()
+    xhs_body = _generate_xhs_body(editor_body, product_url, product_name)
+    return title.strip(), editor_body, xhs_body
+
+
+def _generate_xhs_body(editor_body: str, product_url: str, product_name: str) -> str:
+    """LLM 生成精炼的 xhs 发布确认页正文（≤1000字）"""
+    product_cta = f"\n\n🔥【立即体验】\n👉 {product_name}: {product_url}"
+    cta_len = len(product_cta)
+    target_len = MAX_XHS_BODY - cta_len
+    prompt = f"""你是一个小红书内容精简专家。
+
+请根据以下文章，写一段精简版的小红书正文（不超过{target_len}字）。
+
+要求：
+- 保留核心卖点和亮点
+- 语言口语化、有画面感
+- 不要出现产品链接（后续会单独添加）
+- 独立成文，不要用引导语
+- 控制在{target_len}字以内
+
+原文：{editor_body[:600]}...
+
+输出JSON：{{"body": "精简版正文"}}
+"""
+    try:
+        from xhs_llm import call_llm_json
+        result = call_llm_json(
+            system_prompt=f"你是一个小红书内容精简专家。输出不超过{target_len}字。",
+            user_prompt=prompt,
+            temperature=0.4,
+            max_tokens=4000,
+        )
+        xhs = result.get("body", "").strip()
+        if len(xhs) > target_len:
+            xhs = xhs[:target_len]
+        return xhs + product_cta
+    except Exception as e:
+        logger.warning(f"xhs正文LLM生成失败，使用原文前段: {e}")
+        return editor_body[:MAX_XHS_BODY - len(product_cta)].strip() + product_cta
+
 
 def _retry_llm(prompt_template: str, product_url: str, product_name: str,
                target_audience: str) -> dict:
@@ -128,7 +161,7 @@ def generate_article(product_url: str, product_name: str = "",
         target_audience = config.get("target_audience", "创业者、技术人")
     
     gen = _retry_llm(prompt_template, product_url, product_name, target_audience)
-    title, editor_body, xhs_body = _enforce_limits(gen["title"], gen["body"])
+    title, editor_body, xhs_body = _enforce_limits(gen["title"], gen["body"], product_url, product_name)
     
     return {
         "title": title,
