@@ -118,24 +118,24 @@ python3 xhs_adb_publisher.py --write-thought "正文内容" --title "标题"
 
 ```bash
 # 方式1: 命令行指定设备列表
-.venv/bin/python3 batch_publisher.py \
+python3 batch_publisher.py \
   --devices "R3CN8A,R3CN8B,R3CN8C" \
   --product-url "https://ai.hcrzx.com" \
   --product-name "AI智能助手"
 
 # 方式2: 使用设备配置文件
-.venv/bin/python3 batch_publisher.py \
+python3 batch_publisher.py \
   --config config/devices.json \
   --product-url "https://ai.hcrzx.com"
 
 # 方式3: 自动发现所有 adb device
-.venv/bin/python3 batch_publisher.py \
+python3 batch_publisher.py \
   --auto-discover \
   --product-url "https://ai.hcrzx.com" \
   --dry-run  # 先模拟运行
 
 # 限制并发数（降低风控）
-.venv/bin/python3 batch_publisher.py \
+python3 batch_publisher.py \
   --devices "R3CN8A,R3CN8B,R3CN8C,R3CN8D" \
   --concurrency 2 \
   --product-url "https://ai.hcrzx.com"
@@ -154,7 +154,9 @@ python3 xhs_adb_publisher.py --write-thought "正文内容" --title "标题"
 ```
 xhs-adb-publisher/
 ├── xhs_adb_publisher.py           ← CLI 入口（发布+获客）
+├── batch_publisher.py             ← 多设备批量发布
 ├── SKILL.md                       ← 本文
+├── README.md                      ← 详细文档
 ├── scripts/
 │   ├── phone_controller.py        ← ADB 手机操控核心
 │   ├── xhs_article_publisher.py   ← 文章发布模块

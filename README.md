@@ -9,10 +9,15 @@
 ### 1. 环境准备
 
 ```bash
-pip install uiautomator2 adbutils
-export ANDROID_SERIAL=<你的设备序列号>   # adb devices 查看
-export DEEPSEEK_API_KEY=sk-xxx           # LLM 文章生成
+pip install uiautomator2 adbutils requests
+export ANDROID_SERIAL=<你的设备序列号>   # adb devices 查看（仅发布需要）
+export DEEPSEEK_API_KEY=sk-xxx           # LLM 文章/评论生成
+export XHS_MCP_URL=http://localhost:18060  # MCP 服务地址（评论区获客需要）
 ```
+
+**评论区获客额外依赖：**
+- 启动 [xiaohongshu-mcp](https://github.com/yanzengyun/xiaohongshu-mcp) 服务
+- 默认监听 `http://localhost:18060`
 
 ### 2. 手机端配置
 
@@ -33,6 +38,12 @@ python3 xhs_adb_publisher.py --publish --product-url "https://example.com"
 
 # 仅生成不发布（预览）
 python3 xhs_adb_publisher.py --publish --dry-run --product-url "https://example.com"
+
+# 评论区获客
+python3 xhs_adb_publisher.py --acquire --keyword "AI工具" --product-url "https://example.com"
+
+# 评论区获客（自动模式）
+python3 xhs_adb_publisher.py --acquire --auto --product-url "https://example.com"
 
 # 直接写长文（跳过 LLM）
 python3 xhs_adb_publisher.py --write-long "编辑器正文" --xhs-body "小红书正文" --title "标题"
@@ -72,20 +83,23 @@ python3 xhs_adb_publisher.py --write-thought "正文" --title "标题"
 ```
 xhs-adb-publisher/
 ├── xhs_adb_publisher.py           ← CLI 入口
+├── batch_publisher.py             ← 多设备批量发布
 ├── android_ctl.py                 ← 旧版 CLI（兼容）
 ├── SKILL.md                       ← OpenClaw 技能定义
 ├── scripts/
 │   ├── phone_controller.py        ← ADB 手机操控核心（~130行）
 │   ├── xhs_article_publisher.py   ← 文章发布 (LLM→ADB)
-│   ├── xhs_comment_acquisition.py ← 评论区获客 (TODO)
+│   ├── xhs_comment_acquisition.py ← 评论区获客 (MCP+LLM)
 │   ├── xhs_llm.py                 ← DeepSeek API 封装
-│   └── pexels_images.py           ← Pexels 配图（已弃用，保留引用）
+│   └── pexels_images.py           ← Pexels 配图
 ├── templates/
 │   ├── article-prompt.md          ← 文章生成提示词
-│   └── comment-prompt.md          ← 评论提示词 (TODO)
+│   └── comment-prompt.md          ← 评论生成提示词
 ├── config/
-│   ├── publish.json               ← 发布配置
-│   └── pexels.json                ← Pexels 配置
+│   ├── publish.json               ← 发布+获客配置
+│   ├── pexels.json                ← Pexels 配置
+│   ├── keywords.json              ← 评论区获客关键词
+│   └── devices.json.example       ← 多设备配置示例
 └── data/                           ← 运行时数据（自动创建）
 ```
 
@@ -104,7 +118,9 @@ xhs_adb_publisher.py (CLI)
         │               │
         │               └── Android 手机 · 小红书 App
         │
-        └── xhs_comment_acquisition.py  (TODO)
+        └── xhs_comment_acquisition.py  (MCP API + LLM 评论获客)
+                │
+                └── xiaohongshu-mcp 服务 (localhost:18060)
 ```
 
 ### 技术栈
@@ -113,8 +129,9 @@ xhs_adb_publisher.py (CLI)
 |------|------|
 | `uiautomator2` | Python ←→ 手机 ATX Agent 通信 |
 | `ATX Keyboard` | 自定义输入法，支持中文注入 |
-| `DeepSeek V4-Flash` | AI 生成小红书风格文章 |
+| `DeepSeek V4-Flash` | AI 生成小红书风格文章/评论 |
 | `ADB` | Android Debug Bridge 连接通道 |
+| `xiaohongshu-mcp` | 小红书 MCP 服务（评论区获客）|
 
 ### 坐标系统
 
@@ -146,10 +163,10 @@ xhs_adb_publisher.py (CLI)
 
 | 规则 | 值 | 说明 |
 |------|:--:|------|
-| 最小总字数 | ≥1800 | 含标点/emoji/空格 |
+| 编辑器正文 | 1200-2000字 | 含标点/emoji/空格，不足1200或超过2000会触发重试 |
 | 标题上限 | ≤20字 | 超出截断 |
-| 小红书正文上限 | ≤900字 | 超出截断 |
-| 重试机制 | 最多3次 | 不足字数自动重试 |
+| 小红书正文上限 | ≤1000字 | 发布确认页正文长度限制 |
+| 重试机制 | 最多3次 | 字数不符合要求自动重试 |
 
 ### 输出分割
 
