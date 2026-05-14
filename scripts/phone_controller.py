@@ -234,7 +234,8 @@ def xie_chang_wen(editor_body: str, publish_body: str = "", title: str = "",
 def insert_images_to_editor(image_count: int = 3, serial: str = None, d: u2.Device = None):
     """
     在长文编辑器中插入图片
-    流程: 点击底部工具栏图库按钮 → 点击图片选中 → 点右下角对勾确认 → 自动返回编辑器
+    流程:
+      点击底部图库按钮 → 弹出选择菜单 → 点击相册 → 选择图片 → 点对勾确认
     """
     device = d or get_device(serial)
     logger.info(f"开始插入 {image_count} 张图片到编辑器...")
@@ -245,44 +246,52 @@ def insert_images_to_editor(image_count: int = 3, serial: str = None, d: u2.Devi
         logger.info(f"插入第 {i+1}/{image_count} 张图片...")
 
         # 1. 点击底部工具栏图库按钮
-        # 底部工具栏 y≈0.94，图库是第一个图标 x≈0.11
+        # 小红书本版底部工具栏 y≈sh*0.93-0.95，图库是左边第一个图标
         clicked = False
-        img_btn_positions = [
-            (int(sw * 0.10), int(sh * 0.94)),
-            (int(sw * 0.16), int(sh * 0.94)),
-            (int(sw * 0.22), int(sh * 0.94)),
-        ]
-        for x, y in img_btn_positions:
+        img_btn_ratios = [(0.10, 0.94), (0.15, 0.94), (0.10, 0.93), (0.15, 0.93)]
+        for xr, yr in img_btn_ratios:
+            x, y = int(sw * xr), int(sh * yr)
             device.click(x, y)
             jitter(0.8)
-            if device(textContains="所有照片").exists(timeout=1) or \
-               device(textContains="照片").exists(timeout=1):
+            # 检查是否弹出了选择菜单（相册/拍照/直播等选项）
+            if device(text="相册").exists(timeout=1) or \
+               device(textContains="从手机相册选择").exists(timeout=1):
                 clicked = True
-                logger.info(f"已打开相册 ({x},{y})")
+                logger.info(f"打开图片选择菜单 ({x},{y})")
                 break
 
         if not clicked:
-            logger.warning("未打开相册，跳过")
+            logger.warning("未打开图片选择菜单，跳过")
             return False
 
-        jitter(1)
+        jitter(0.5)
 
-        # 2. 点击需要插入的图片（3列网格布局，从最新照片开始选）
-        # 相册顶部的照片是最近推送的，选第1张
-        grid_cols = 3
-        grid_start_y = int(sh * 0.22)
+        # 2. 点击相册选项进入图片选择页
+        for txt in ["相册", "从手机相册选择"]:
+            el = device(text=txt)
+            if el.exists(timeout=1):
+                el.click()
+                logger.info(f"点击: {txt}")
+                break
+        jitter(1.5)
+
+        # 3. 选择第一张照片（最新推送的图片在第1张）
+        grid_cols = 3  # 3列网格
+        grid_start_y = int(sh * 0.25)
         item_size = sw // grid_cols
-        cell_x = int(item_size * 0.5)  # 第一张（最新照片）
-        cell_y = int(grid_start_y + item_size * 0.5)
-        device.click(cell_x, cell_y)
-        logger.info(f"选中图片 (左上角)")
+        px = int(item_size * 0.5)   # 第一列中间
+        py = int(grid_start_y + item_size * 0.5)  # 第一行中间
+        device.click(px, py)
+        logger.info(f"选中图片 ({px}, {py})")
         jitter(1)
 
-        # 3. 点击右下角对勾 ✓ 确认选择
+        # 4. 点击右下角对勾确认
         check_x = int(sw * 0.92)
         check_y = int(sh * 0.88)
-        device.click(check_x, check_y)
-        logger.info(f"点击右下角对勾确认")
+        for _ in range(3):
+            device.click(check_x, check_y)
+            jitter(0.3)
+        logger.info(f"点击右下角对勾确认 ({check_x}, {check_y})")
         jitter(2)
 
     logger.info("图片插入完成")
