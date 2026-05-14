@@ -36,6 +36,9 @@ export XHS_MCP_URL=http://localhost:18060  # MCP 服务地址（评论区获客�
 # 完整发布（推荐）
 python3 xhs_adb_publisher.py --publish --product-url "https://example.com"
 
+# 发布带配图的文章（3张Pexels图片）
+python3 xhs_adb_publisher.py --publish --product-url "https://example.com" --images 3
+
 # 仅生成不发布（预览）
 python3 xhs_adb_publisher.py --publish --dry-run --product-url "https://example.com"
 

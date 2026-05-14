@@ -11,6 +11,9 @@
   # 完整发布流程（推荐）
   python3 xhs_adb_publisher.py --publish --product-url "https://ai.hcrzx.com"
 
+  # 发布带配图的文章（3张图片）
+  python3 xhs_adb_publisher.py --publish --product-url "https://ai.hcrzx.com" --images 3
+
   # 评论区获客
   python3 xhs_adb_publisher.py --acquire --keyword "AI工具" --product-url "https://ai.hcrzx.com"
 
@@ -60,6 +63,7 @@ def cmd_publish(args):
         product_name=args.product_name or "",
         target_audience=args.target_audience or "",
         dry_run=args.dry_run,
+        image_count=args.images or 0,
     )
     print(json.dumps(result, ensure_ascii=False, indent=2))
     return result
@@ -101,6 +105,7 @@ def main():
     parser.add_argument("--product-url", "-u", help="产品链接")
     parser.add_argument("--product-name", "-n", help="产品名称（可选）")
     parser.add_argument("--target-audience", help="目标受众（可选）")
+    parser.add_argument("--images", "-i", type=int, default=0, help="配图数量（默认0，建议1-3）")
     parser.add_argument("--dry-run", action="store_true", help="仅测试不发布/不评论")
     
     # 获客模式
