@@ -235,7 +235,7 @@ def insert_images_to_editor(image_count: int = 3, serial: str = None, d: u2.Devi
     """
     在长文编辑器中插入图片
     流程:
-      点击底部图库按钮 → 弹出选择菜单 → 点击相册 → 选择图片 → 点对勾确认
+      查找底部"收起"按钮 → 其左边为图库按钮 → 点击 → 弹出菜单 → 点相册 → 选图片 → 点对勾
     """
     device = d or get_device(serial)
     logger.info(f"开始插入 {image_count} 张图片到编辑器...")
@@ -245,28 +245,35 @@ def insert_images_to_editor(image_count: int = 3, serial: str = None, d: u2.Devi
     for i in range(image_count):
         logger.info(f"插入第 {i+1}/{image_count} 张图片...")
 
-        # 1. 点击底部工具栏图库按钮
-        # 小红书本版底部工具栏 y≈sh*0.93-0.95，图库是左边第一个图标
-        clicked = False
-        img_btn_ratios = [(0.10, 0.94), (0.15, 0.94), (0.10, 0.93), (0.15, 0.93)]
-        for xr, yr in img_btn_ratios:
-            x, y = int(sw * xr), int(sh * yr)
-            device.click(x, y)
-            jitter(0.8)
-            # 检查是否弹出了选择菜单（相册/拍照/直播等选项）
-            if device(text="相册").exists(timeout=1) or \
-               device(textContains="从手机相册选择").exists(timeout=1):
-                clicked = True
-                logger.info(f"打开图片选择菜单 ({x},{y})")
-                break
+        # 1. 找底部"收起"按钮，图库在它左边
+        btn_found = False
+        el = device(text="收起")
+        if el.exists(timeout=2):
+            # 获取"收起"按钮的位置
+            bounds = el.bounds
+            # 图库按钮在"收起"左边，间距约一个图标的宽度(≈50-60px)
+            gallery_x = bounds[0] - 60
+            gallery_y = (bounds[1] + bounds[3]) // 2
+            device.click(gallery_x, gallery_y)
+            logger.info(f"通过'收起'定位图库: ({gallery_x}, {gallery_y})")
+            btn_found = True
+            jitter(1)
+        else:
+            logger.warning("未找到'收起'按钮")
+            # fallback: 用uiautomator2的text查找
+            for txt in ["图片", "图库", "相册"]:
+                el = device(text=txt)
+                if el.exists(timeout=1):
+                    el.click()
+                    btn_found = True
+                    logger.info(f"点击: {txt}")
+                    break
 
-        if not clicked:
-            logger.warning("未打开图片选择菜单，跳过")
+        if not btn_found:
+            logger.warning("未找到图库按钮，跳过图片")
             return False
 
-        jitter(0.5)
-
-        # 2. 点击相册选项进入图片选择页
+        # 2. 点击相册选项
         for txt in ["相册", "从手机相册选择"]:
             el = device(text=txt)
             if el.exists(timeout=1):
@@ -275,14 +282,14 @@ def insert_images_to_editor(image_count: int = 3, serial: str = None, d: u2.Devi
                 break
         jitter(1.5)
 
-        # 3. 选择第一张照片（最新推送的图片在第1张）
-        grid_cols = 3  # 3列网格
+        # 3. 选择第i张照片（最新推送的图片在第1张，3列网格）
+        grid_cols = 3
         grid_start_y = int(sh * 0.25)
         item_size = sw // grid_cols
-        px = int(item_size * 0.5)   # 第一列中间
-        py = int(grid_start_y + item_size * 0.5)  # 第一行中间
+        px = int(item_size * 0.5)
+        py = int(grid_start_y + item_size * 0.5)
         device.click(px, py)
-        logger.info(f"选中图片 ({px}, {py})")
+        logger.info(f"选择图片 {i+1}")
         jitter(1)
 
         # 4. 点击右下角对勾确认
@@ -291,11 +298,45 @@ def insert_images_to_editor(image_count: int = 3, serial: str = None, d: u2.Devi
         for _ in range(3):
             device.click(check_x, check_y)
             jitter(0.3)
-        logger.info(f"点击右下角对勾确认 ({check_x}, {check_y})")
+        logger.info("点击右下角对勾")
         jitter(2)
 
     logger.info("图片插入完成")
     return True
+
+
+def _split_body_for_images(body: str, image_count: int) -> list:
+    """将正文切分为多段，每段之间插入一张图片
+    
+    返回: ["第1段", "第2段", ..., "第N段"]
+    每段的字符数 ≈ body总长 / (image_count + 1)
+    尽量在段落边界（换行）处切分
+    """
+    if image_count <= 0:
+        return [body]
+
+    if not body.strip():
+        return [body]
+
+    # 先按段落拆分
+    paragraphs = body.split("\n")
+    segments = []
+    chars_per_seg = len(body) / (image_count + 1)
+    current = []
+    current_len = 0
+
+    for para in paragraphs:
+        current.append(para)
+        current_len += len(para) + 1  # +1 for newline
+        if current_len >= chars_per_seg and len(current) > 1:
+            segments.append("\n".join(current))
+            current = []
+            current_len = 0
+
+    if current:
+        segments.append("\n".join(current))
+
+    return segments
 
 
 def xie_chang_wen_with_images(
@@ -305,7 +346,7 @@ def xie_chang_wen_with_images(
     image_count: int = 0,
     serial: str = None
 ):
-    """写长文（含图片插入）"""
+    """写长文（含图片插入，图片在段落之间）"""
     d = get_device(serial)
     open_xhs(d)
     click_xie_wenzi(d)
@@ -333,19 +374,38 @@ def xie_chang_wen_with_images(
     d.click(int(d.info.get("displayWidth",1080))/2, int(d.info.get("displayHeight",2400))*0.25)
     jitter(0.3)
 
-    # 插入图片
-    if image_count > 0:
-        insert_images_to_editor(image_count, serial, d)
-        d.click(int(d.info.get("displayWidth",1080))/2, int(d.info.get("displayHeight",2400))*0.25)
-        jitter(0.5)
+    # 分段输入正文，每段后插图片
+    if image_count > 0 and editor_body:
+        body_segments = _split_body_for_images(editor_body, image_count)
+        logger.info(f"正文切分为 {len(body_segments)} 段，插入 {len(body_segments)-1} 张图片")
+        for seg_idx, segment in enumerate(body_segments):
+            # 输入当前段
+            if segment.strip():
+                chunk_size = 500
+                for i in range(0, len(segment), chunk_size):
+                    chunk = segment[i:i+chunk_size]
+                    d.send_keys(chunk)
+                    jitter(0.2)
+                jitter(0.3)
 
-    # 输入正文
-    chunk_size = 500
-    for i in range(0, len(editor_body), chunk_size):
-        chunk = editor_body[i:i+chunk_size]
-        d.send_keys(chunk)
-        jitter(0.2)
-    jitter(0.3)
+            # 非最后一段 → 插入图片
+            if seg_idx < len(body_segments) - 1 and seg_idx < image_count:
+                # 换行
+                d.send_keys("\n")
+                jitter(0.3)
+                # 插入图片
+                insert_images_to_editor(1, serial, d)
+                # 再换行继续输入
+                d.send_keys("\n")
+                jitter(0.3)
+    else:
+        # 无图片，全部输入
+        chunk_size = 500
+        for i in range(0, len(editor_body), chunk_size):
+            chunk = editor_body[i:i+chunk_size]
+            d.send_keys(chunk)
+            jitter(0.2)
+        jitter(0.3)
 
     logger.info("一键排版中...")
     el = d(text="一键排版")
