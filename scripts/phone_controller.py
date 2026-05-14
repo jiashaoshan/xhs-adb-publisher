@@ -180,27 +180,28 @@ def xie_chang_wen(editor_body: str, publish_body: str = "", title: str = "",
             break
         jitter(0.5)
     jitter(2)
-    # 点击"下一步"
+    # 点击"下一步"（从卡片样式页到模板选择/发布确认页）
     for _ in range(10):
         btns = list(d(text="下一步"))
         if btns:
             btns[-1].click(); logger.info("点击下一步"); break
-        # 同时检查是否有"选择喜欢的排版" - 如果有说明还在模板页
-        if d(textContains="选择喜欢的排版").exists(timeout=0.3):
-            logger.info("仍在模板选择页，再点一次模板")
-            for t in ["涂鸦马克"]:
-                el = d(text=t)
-                if el.exists(timeout=0.3):
-                    el.click(); break
-            break
         jitter(0.5)
-    # 如果还在模板选择页，再等渲染后点下一步
-    for _ in range(5):
+    jitter(2)
+    # 检测并处理模板选择页
+    for _ in range(8):
         if d(textContains="选择喜欢的排版").exists(timeout=0.3):
-            jitter(2)
+            logger.info("仍在模板选择页")
+            # 先选一个模板
+            for tpl in ["涂鸦马克"]:
+                el = d(text=tpl)
+                if el.exists(timeout=0.3):
+                    el.click(); logger.info(f"选择模板: {tpl}"); break
+            jitter(1)
+            # 再点下一步
             btns = list(d(text="下一步"))
             if btns:
-                btns[-1].click(); logger.info("模板页再点下一步"); break
+                btns[-1].click(); logger.info("模板页点击下一步")
+            jitter(2)
         else:
             break
     # 等发布确认页渲染
@@ -384,23 +385,24 @@ def xie_chang_wen_with_images(
             btns[-1].click()
             logger.info("点击下一步")
             break
+        jitter(0.5)
+    jitter(2)
+    # 检测并处理模板选择页
+    for _ in range(8):
         if d(textContains="选择喜欢的排版").exists(timeout=0.3):
-            for t in ["涂鸦马克"]:
-                el = d(text=t)
+            logger.info("仍在模板选择页")
+            for tpl in ["涂鸦马克"]:
+                el = d(text=tpl)
                 if el.exists(timeout=0.3):
                     el.click()
+                    logger.info(f"选择模板: {tpl}")
                     break
-            break
-        jitter(0.5)
-
-    for _ in range(5):
-        if d(textContains="选择喜欢的排版").exists(timeout=0.3):
-            jitter(2)
+            jitter(1)
             btns = list(d(text="下一步"))
             if btns:
                 btns[-1].click()
-                logger.info("模板页再点下一步")
-                break
+                logger.info("模板页点击下一步")
+            jitter(2)
         else:
             break
 
