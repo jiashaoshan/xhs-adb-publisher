@@ -7,7 +7,7 @@ logger = logging.getLogger(__name__)
 LLM_API_URL = None
 LLM_API_KEY = None
 DEFAULT_MODEL = "qianfan-code-latest"
-DEFAULT_MAX_TOKENS = 16384
+DEFAULT_MAX_TOKENS = 8192
 DEFAULT_TIMEOUT = 180
 
 def _load_llm_config():
@@ -59,6 +59,11 @@ def call_llm(system_prompt: str, user_prompt: str, model: str = None,
         model = DEFAULT_MODEL
     if max_tokens is None:
         max_tokens = DEFAULT_MAX_TOKENS
+
+    # 千帆 API 的 max_tokens 限制，超过 8192 容易失败
+    if max_tokens > 8192:
+        logger.warning(f"max_tokens {max_tokens} 过大，调整为 8192")
+        max_tokens = 8192
 
     headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
     payload = {"model": model, "messages": [

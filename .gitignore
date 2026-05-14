@@ -1,5 +1,11 @@
+# 运行时数据
+data/*.log
+data/batch_*.json
+data/batch_*.log
+data/publisher_*.log
 data/pexels/
 data/test_images/
 data/test_download/
 __pycache__/
 *.pyc
+.venv/
