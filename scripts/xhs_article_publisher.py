@@ -15,7 +15,6 @@ sys.path.insert(0, str(SCRIPT_DIR))
 
 from xhs_llm import call_llm_json
 from phone_controller import publish_article
-from pexels_images import get_images_for_article
 
 logger = logging.getLogger("xhs-publisher")
 
@@ -175,21 +174,20 @@ def generate_article(product_url: str, product_name: str = "",
     }
 
 def run(product_url: str, product_name: str = "", target_audience: str = "",
-        dry_run: bool = False, image_count: int = 0) -> dict:
+        dry_run: bool = False) -> dict:
     """
-    完整发布流程: LLM生成 → 获取图片(可选) → ADB发布
+    完整发布流程: LLM生成 → ADB发布
 
     Args:
         product_url: 产品链接
         product_name: 产品名称（可选）
         target_audience: 目标受众（可选）
         dry_run: 仅生成不发布
-        image_count: 配图数量（0=无图片）
     """
     result = {"status": "started", "steps": []}
 
     # 步骤1: LLM 生成
-    logger.info("步骤1/3: LLM 生成文章...")
+    logger.info("步骤1/2: LLM 生成文章...")
     article = generate_article(product_url, product_name, target_audience)
     result["article"] = article
     result["steps"].append({"step": "llm_generate", "status": "ok",
@@ -202,46 +200,14 @@ def run(product_url: str, product_name: str = "", target_audience: str = "",
         result["status"] = "dry_run"
         return result
 
-    # 步骤2: 获取图片（如需要）
-    image_result = None
-    if image_count > 0:
-        logger.info(f"步骤2/3: 获取 {image_count} 张配图...")
-        # 使用产品名称或清理后的标题作为搜索关键词
-        import re
-        if product_name:
-            search_topic = product_name
-        else:
-            # 清理标题中的 emoji 和特殊字符
-            title_clean = re.sub(r'[^\w\u4e00-\u9fff\s]', '', article['title'][:30])
-            title_clean = title_clean.strip()
-            # 如果清理后为空，使用默认关键词
-            search_topic = title_clean if title_clean else "AI technology"
-            logger.info(f"图片搜索关键词: 原始='{article['title'][:30]}...' → 清理后='{search_topic}'")
-        image_result = get_images_for_article(search_topic, image_count)
-        result["images"] = image_result
-        result["steps"].append({"step": "get_images", "status": "ok",
-                                "count": image_result.get("count", 0)})
-        logger.info(f"  本地图片: {len(image_result.get('local_paths', []))}")
-        logger.info(f"  手机图片: {len(image_result.get('phone_paths', []))}")
-
-        # 如果图片推送失败，降级为无图片发布
-        actual_image_count = image_result.get("count", 0)
-        if actual_image_count < image_count:
-            logger.warning(f"图片获取不足，期望 {image_count} 张，实际 {actual_image_count} 张")
-            image_count = actual_image_count
-    else:
-        result["steps"].append({"step": "get_images", "status": "skipped"})
-
-    # 步骤3: ADB 发布
-    step_num = "3/3" if image_count > 0 else "2/2"
-    logger.info(f"步骤{step_num}: ADB 发布到小红书...")
+    # 步骤2: ADB 发布
+    logger.info(f"步骤2/2: ADB 发布到小红书...")
     try:
         serial = os.environ.get("ANDROID_SERIAL")
         publish_result = publish_article(
             serial=serial,
             product_url=product_url,
             article=article,
-            image_count=image_count,
         )
         record = {
             "title": article["title"],
@@ -249,7 +215,6 @@ def run(product_url: str, product_name: str = "", target_audience: str = "",
             "published_at": datetime.now().isoformat(),
             "type": "长文",
             "total_chars": article["total_chars"],
-            "image_count": image_count,
         }
         save_published(record)
         result["record"] = record

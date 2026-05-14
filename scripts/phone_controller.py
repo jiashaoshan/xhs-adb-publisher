@@ -231,283 +231,24 @@ def xie_chang_wen(editor_body: str, publish_body: str = "", title: str = "",
     logger.info("关闭小红书后台")
 
 
-def insert_images_to_editor(image_count: int = 3, serial: str = None, d: u2.Device = None):
-    """
-    在长文编辑器中插入图片
-    流程:
-      查找底部"收起"按钮 → 其左边为图库按钮 → 点击 → 弹出菜单 → 点相册 → 选图片 → 点对勾
-    """
-    device = d or get_device(serial)
-    logger.info(f"开始插入 {image_count} 张图片到编辑器...")
-    sw = device.info.get('displayWidth', REF_W)
-    sh = device.info.get('displayHeight', REF_H)
-
-    for i in range(image_count):
-        logger.info(f"插入第 {i+1}/{image_count} 张图片...")
-
-        # 1. 找底部"收起"按钮，图库在它左边
-        btn_found = False
-        el = device(text="收起")
-        if el.exists(timeout=2):
-            # 获取"收起"按钮的位置
-            bounds = el.bounds
-            # 图库按钮在"收起"左边，间距约一个图标的宽度(≈50-60px)
-            gallery_x = bounds[0] - 60
-            gallery_y = (bounds[1] + bounds[3]) // 2
-            device.click(gallery_x, gallery_y)
-            logger.info(f"通过'收起'定位图库: ({gallery_x}, {gallery_y})")
-            btn_found = True
-            jitter(1)
-        else:
-            logger.warning("未找到'收起'按钮")
-            # fallback: 用uiautomator2的text查找
-            for txt in ["图片", "图库", "相册"]:
-                el = device(text=txt)
-                if el.exists(timeout=1):
-                    el.click()
-                    btn_found = True
-                    logger.info(f"点击: {txt}")
-                    break
-
-        if not btn_found:
-            logger.warning("未找到图库按钮，跳过图片")
-            return False
-
-        # 2. 点击相册选项
-        for txt in ["相册", "从手机相册选择"]:
-            el = device(text=txt)
-            if el.exists(timeout=1):
-                el.click()
-                logger.info(f"点击: {txt}")
-                break
-        jitter(1.5)
-
-        # 3. 选择第i张照片（最新推送的图片在第1张，3列网格）
-        grid_cols = 3
-        grid_start_y = int(sh * 0.25)
-        item_size = sw // grid_cols
-        px = int(item_size * 0.5)
-        py = int(grid_start_y + item_size * 0.5)
-        device.click(px, py)
-        logger.info(f"选择图片 {i+1}")
-        jitter(1)
-
-        # 4. 点击右下角对勾确认
-        check_x = int(sw * 0.92)
-        check_y = int(sh * 0.88)
-        for _ in range(3):
-            device.click(check_x, check_y)
-            jitter(0.3)
-        logger.info("点击右下角对勾")
-        jitter(2)
-
-    logger.info("图片插入完成")
-    return True
-
-
-def _split_body_for_images(body: str, image_count: int) -> list:
-    """将正文切分为多段，每段之间插入一张图片
-    
-    返回: ["第1段", "第2段", ..., "第N段"]
-    每段的字符数 ≈ body总长 / (image_count + 1)
-    尽量在段落边界（换行）处切分
-    """
-    if image_count <= 0:
-        return [body]
-
-    if not body.strip():
-        return [body]
-
-    # 先按段落拆分
-    paragraphs = body.split("\n")
-    segments = []
-    chars_per_seg = len(body) / (image_count + 1)
-    current = []
-    current_len = 0
-
-    for para in paragraphs:
-        current.append(para)
-        current_len += len(para) + 1  # +1 for newline
-        if current_len >= chars_per_seg and len(current) > 1:
-            segments.append("\n".join(current))
-            current = []
-            current_len = 0
-
-    if current:
-        segments.append("\n".join(current))
-
-    return segments
-
-
-def xie_chang_wen_with_images(
-    editor_body: str,
-    publish_body: str = "",
-    title: str = "",
-    image_count: int = 0,
-    serial: str = None
-):
-    """写长文（含图片插入，图片在段落之间）"""
-    d = get_device(serial)
-    open_xhs(d)
-    click_xie_wenzi(d)
-
-    el = d(text="写长文")
-    if el.exists(timeout=2):
-        el.click()
-    else:
-        for txt in ["长文"]:
-            el = d(textContains=txt)
-            if el.exists(timeout=1):
-                el.click()
-                break
-    jitter(2)
-
-    if title:
-        el = d(text="输入标题")
-        if el.exists(timeout=2):
-            el.click()
-            jitter(0.3)
-            d.send_keys(title)
-            jitter(0.3)
-
-    # 点击正文编辑区
-    d.click(int(d.info.get("displayWidth",1080))/2, int(d.info.get("displayHeight",2400))*0.25)
-    jitter(0.3)
-
-    # 分段输入正文，每段后插图片
-    if image_count > 0 and editor_body:
-        body_segments = _split_body_for_images(editor_body, image_count)
-        logger.info(f"正文切分为 {len(body_segments)} 段，插入 {len(body_segments)-1} 张图片")
-        for seg_idx, segment in enumerate(body_segments):
-            # 输入当前段
-            if segment.strip():
-                chunk_size = 500
-                for i in range(0, len(segment), chunk_size):
-                    chunk = segment[i:i+chunk_size]
-                    d.send_keys(chunk)
-                    jitter(0.2)
-                jitter(0.3)
-
-            # 非最后一段 → 插入图片
-            if seg_idx < len(body_segments) - 1 and seg_idx < image_count:
-                # 换行
-                d.send_keys("\n")
-                jitter(0.3)
-                # 插入图片
-                insert_images_to_editor(1, serial, d)
-                # 再换行继续输入
-                d.send_keys("\n")
-                jitter(0.3)
-    else:
-        # 无图片，全部输入
-        chunk_size = 500
-        for i in range(0, len(editor_body), chunk_size):
-            chunk = editor_body[i:i+chunk_size]
-            d.send_keys(chunk)
-            jitter(0.2)
-        jitter(0.3)
-
-    logger.info("一键排版中...")
-    el = d(text="一键排版")
-    if el.exists(timeout=3):
-        el.click()
-        logger.info("点击一键排版")
-
-    logger.info("等待排版渲染中...")
-    jitter(24, 0.1)
-
-    for _ in range(20):
-        if not d(text="图片生成中").exists(timeout=0.5):
-            break
-        jitter(0.5)
-    jitter(2)
-
-    for _ in range(10):
-        btns = list(d(text="下一步"))
-        if btns:
-            btns[-1].click()
-            logger.info("点击下一步")
-            break
-        jitter(0.5)
-    jitter(2)
-    # 检测并处理模板选择页
-    for _ in range(8):
-        if d(textContains="选择喜欢的排版").exists(timeout=0.3):
-            logger.info("仍在模板选择页")
-            for tpl in ["涂鸦马克"]:
-                el = d(text=tpl)
-                if el.exists(timeout=0.3):
-                    el.click()
-                    logger.info(f"选择模板: {tpl}")
-                    break
-            jitter(1)
-            btns = list(d(text="下一步"))
-            if btns:
-                btns[-1].click()
-                logger.info("模板页点击下一步")
-            jitter(2)
-        else:
-            break
-
-    jitter(8, 0.1)
-    for _ in range(20):
-        if not d(text="图片生成中").exists(timeout=0.3):
-            break
-        jitter(0.3)
-
-    if publish_body:
-        found = False
-        for txt in ["添加正文或发语音", "添加正文"]:
-            el = d(textContains=txt)
-            if el.exists(timeout=1):
-                el.click()
-                jitter(0.5)
-                found = True
-                break
-        if found:
-            d.send_keys(publish_body)
-            jitter(0.5)
-            logger.info(f"输入发布确认页正文: {len(publish_body)}字")
-        else:
-            sh = d.info.get('displayHeight', 2400)
-            d.click(int(d.info.get('displayWidth',1080))/2, int(sh*0.5))
-            jitter(0.3)
-            d.send_keys(publish_body)
-            jitter(0.3)
-
-    set_visibility_and_publish(d)
-    d.app_stop('com.xingin.xhs')
-    logger.info("关闭小红书后台")
-
-
 def publish_article(serial: str, product_url: str, article: dict, image_count: int = 0) -> dict:
-    """发布文章，支持图片"""
+    """发布文章"""
     title = article.get("title", "")
     editor_body = article.get("editor_body", "")
     xhs_body = article.get("xhs_body", "")
-    logger.info(f"[{serial}] 开始发布: {title}, 图片: {image_count}张")
+    logger.info(f"[{serial}] 开始发布: {title}")
     try:
-        if image_count > 0:
-            xie_chang_wen_with_images(
-                editor_body=editor_body,
-                publish_body=xhs_body,
-                title=title,
-                image_count=image_count,
-                serial=serial,
-            )
-        else:
-            xie_chang_wen(
-                editor_body=editor_body,
-                publish_body=xhs_body,
-                title=title,
-                serial=serial,
-            )
+        xie_chang_wen(
+            editor_body=editor_body,
+            publish_body=xhs_body,
+            title=title,
+            serial=serial,
+        )
         result = {
             "serial": serial,
             "status": "published",
             "title": title,
             "product_url": product_url,
-            "image_count": image_count,
         }
         logger.info(f"[{serial}] ✅ 发布成功: {title}")
     except Exception as e:
@@ -516,7 +257,6 @@ def publish_article(serial: str, product_url: str, article: dict, image_count: i
             "status": "failed",
             "title": title,
             "error": str(e),
-            "image_count": image_count,
         }
         logger.error(f"[{serial}] ❌ 发布失败: {e}")
     return result
