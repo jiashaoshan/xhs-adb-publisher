@@ -206,8 +206,17 @@ def run(product_url: str, product_name: str = "", target_audience: str = "",
     image_result = None
     if image_count > 0:
         logger.info(f"步骤2/3: 获取 {image_count} 张配图...")
-        # 使用标题作为搜索关键词
-        search_topic = product_name or article['title'][:20]
+        # 使用产品名称或清理后的标题作为搜索关键词
+        import re
+        if product_name:
+            search_topic = product_name
+        else:
+            # 清理标题中的 emoji 和特殊字符
+            title_clean = re.sub(r'[^\w\u4e00-\u9fff\s]', '', article['title'][:30])
+            title_clean = title_clean.strip()
+            # 如果清理后为空，使用默认关键词
+            search_topic = title_clean if title_clean else "AI technology"
+            logger.info(f"图片搜索关键词: 原始='{article['title'][:30]}...' → 清理后='{search_topic}'")
         image_result = get_images_for_article(search_topic, image_count)
         result["images"] = image_result
         result["steps"].append({"step": "get_images", "status": "ok",

@@ -234,40 +234,53 @@ def xie_chang_wen(editor_body: str, publish_body: str = "", title: str = "",
 def insert_images_to_editor(image_count: int = 3, serial: str = None, d: u2.Device = None):
     """
     在长文编辑器中插入图片
-    流程: 点击工具栏图片按钮 → 从相册选择 → 选择图片 → 确认
+    流程: 点击底部工具栏图库按钮 → 选择相册 → 选择图片 → 确认
+    
+    小红书8.78版本编辑器底部工具栏布局:
+    - 左起: 图库(图片图标) | 拍照 | 模版 | ... | 键盘
     """
     device = d or get_device(serial)
     logger.info(f"开始插入 {image_count} 张图片到编辑器...")
+    sw = device.info.get('displayWidth', REF_W)
+    sh = device.info.get('displayHeight', REF_H)
+
+    # 先上滑一点点，确保键盘收起 → 露出底部工具栏
+    device.swipe(sw // 2, sh // 2, sw // 2, sh // 3, duration=0.2)
+    jitter(0.5)
 
     for i in range(image_count):
         logger.info(f"插入第 {i+1}/{image_count} 张图片...")
-        clicked = False
 
-        # 方式1: 查找"图片"文本按钮
-        for txt in ["图片", "相册", "添加图片", "插入图片"]:
-            el = device(text=txt)
+        # 点击底部工具栏的"图库"按钮
+        # 小红书编辑器的图片按钮通常在最底层底部工具栏，x 靠近左边
+        # 尝试descripton搜索
+        clicked = False
+        for desc in ["图库", "图片", "相册", "添加图片"]:
+            el = device(description=desc)
             if el.exists(timeout=1):
                 el.click()
                 clicked = True
-                logger.info(f"点击: {txt}")
+                logger.info(f"点击: {desc}")
                 break
 
-        # 方式2: 点击工具栏的+号按钮
         if not clicked:
-            sw = device.info.get('displayWidth', REF_W)
-            sh = device.info.get('displayHeight', REF_H)
+            # 坐标方式点底部工具栏第一个图标（图库按钮）
+            # 底部工具栏 ~y=sh*0.93，图库按钮在 ~x=sw*0.15
             positions = [
-                (sw * 0.5, sh * 0.88),
-                (sw * 0.6, sh * 0.88),
-                (sw * 0.4, sh * 0.88),
+                (sw * 0.12, sh * 0.93),
+                (sw * 0.20, sh * 0.93),
+                (sw * 0.28, sh * 0.93),
             ]
             for x, y in positions:
                 device.click(int(x), int(y))
-                jitter(0.5)
+                jitter(0.8)
+                # 检查是否打开了相册/图片选择界面
                 if device(textContains="相册").exists(timeout=1) or \
-                   device(textContains="选择").exists(timeout=1):
+                   device(textContains="选择").exists(timeout=1) or \
+                   device(text="所有照片").exists(timeout=1) or \
+                   device(text="最近项目").exists(timeout=1):
                     clicked = True
-                    logger.info("点击工具栏按钮打开相册")
+                    logger.info(f"打开图库: ({x:.0f}, {y:.0f})")
                     break
 
         if not clicked:
@@ -276,42 +289,34 @@ def insert_images_to_editor(image_count: int = 3, serial: str = None, d: u2.Devi
 
         jitter(1.5)
 
-        # 选择"从相册选择"
-        for txt in ["从相册选择", "相册", "选择照片", "图片"]:
-            el = device(text=txt)
-            if el.exists(timeout=1):
-                el.click()
-                logger.info(f"选择: {txt}")
-                break
-
-        jitter(2)
-
-        # 选择第i张图片
-        sw = device.info.get('displayWidth', REF_W)
-        sh = device.info.get('displayHeight', REF_H)
+        # 已进入相册选择界面，选择第i张照片
+        # 小红书相册网格: 3列，每行相同高度
         grid_cols = 3
-        grid_start_y = sh * 0.15
-        item_width = sw / grid_cols
-        item_height = item_width
+        grid_start_y = sh * 0.18
+        item_size = sw / grid_cols
         row = i // grid_cols
         col = i % grid_cols
-        x = int(item_width * (col + 0.5))
-        y = int(grid_start_y + item_height * (row + 0.5))
+        x = int(item_size * (col + 0.5))
+        y = int(grid_start_y + item_size * (row + 0.5))
         device.click(x, y)
-        logger.info(f"点击相册第{i+1}个位置")
+        logger.info(f"选择图片 {i+1}/{image_count}")
         jitter(1)
 
-        # 确认选择
-        for txt in ["下一步", "完成", "确定", "确认"]:
+        # 确认选择（点击图片后可能自动返回编辑器）
+        for txt in ["下一步", "完成", "确定"]:
             el = device(text=txt)
             if el.exists(timeout=1):
                 el.click()
-                logger.info(f"点击确认: {txt}")
+                logger.info(f"确认: {txt}")
+                jitter(1)
                 break
 
         jitter(2)
 
-    logger.info(f"图片插入完成")
+    # 插入完成后，点击正文区域继续
+    device.click(sw // 2, int(sh * 0.4))
+    jitter(0.5)
+    logger.info("图片插入完成")
     return True
 
 
