@@ -12,18 +12,30 @@ PEXELS_API_URL = "https://api.pexels.com/v1/search"
 DATA_DIR = Path(__file__).parent.parent / "data"
 
 def _get_api_key() -> Optional[str]:
-    """从环境变量读取 Pexels API Key"""
+    """从环境变量或 openclaw.json 读取 Pexels API Key"""
+    # 1. 优先从环境变量读取
     key = os.environ.get("PEXELS_API_KEY")
     if key:
         return key
-    # fallback: 从openclaw.json读取
+
+    # 2. 从 openclaw.json 读取（新格式）
     try:
         cfg = os.path.expanduser("~/.openclaw/openclaw.json")
         if os.path.exists(cfg):
             with open(cfg) as f:
-                env = json.load(f).get("env", {})
-                return env.get("PEXELS_API_KEY")
-    except: pass
+                data = json.load(f)
+                # 新格式: root.env.PEXELS_API_KEY
+                env = data.get("env", {})
+                key = env.get("PEXELS_API_KEY")
+                if key:
+                    return key
+                # 旧格式兼容
+                key = data.get("env", {}).get("PEXELS_API_KEY")
+                if key:
+                    return key
+    except Exception as e:
+        logger.debug(f"读取 openclaw.json 失败: {e}")
+
     return None
 
 def search_images(query: str, count: int = 3) -> List[dict]:

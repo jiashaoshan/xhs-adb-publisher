@@ -1,6 +1,5 @@
+data/pexels/
+data/test_images/
+data/test_download/
 __pycache__/
 *.pyc
-.DS_Store
-*.log
-config/devices.json
-data/batch_result_*.json
