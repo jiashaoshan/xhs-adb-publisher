@@ -92,18 +92,17 @@ python3 xhs_adb_publisher.py --write-thought "正文" --title "标题"
 → 添加标题 → 仅自己可见 → 发布 → 回桌面
 ```
 
-### 图文发布（AI生成文章+配图）
+### 图文发布（AI生成封面+文章）
 
 ```
 桌面 → 打开小红书 → 处理草稿弹窗(如有) → 点击底部+号
 → 点击"从相册选择"(文本查找)
-→ 选择图片(封面1张+内容4张，共5张)
-→ 点击下一步(文本查找) → 进入图片编辑页
+→ 选择图片(封面图1张，点击右上角对勾)
+→ 点击下一步(文本查找) → 进入图片编辑页(等待5s)
 → 点击下一步(文本查找) → 进入发布确认页
-→ 输入标题(≤20字)
-→ 点击"添加正文" → 输入小红书正文(≤1000字)
-→ 点击"公开可见"(文本查找) → 选择"仅自己可见"(文本查找)
-→ 点击"发布笔记"(文本查找)
+→ EditText[0] 输入标题(≤20字，等待3s)
+→ EditText[1] 输入正文(≤1000字)
+→ 等待5s → 点击"发布笔记"(文本查找)
 → 等待 15s（发布动画播放）→ 按3次home键回到桌面
 ```
 
@@ -111,19 +110,15 @@ python3 xhs_adb_publisher.py --write-thought "正文" --title "标题"
 ```
 输入主题/产品链接
   ↓
-LLM 生成小红书热文(2000-2500字)
+LLM 生成小红书正文(≤1000字)
   ↓
-自动检测文章类型(general/tutorial/story/comparison/list)
+随机选封面模板 → 填充模板参数(product_slogan + article_title)
   ↓
-根据文章内容生成文生图提示词(封面1张+内容4张)
+调用豆包API生成封面图(1张)
   ↓
-调用豆包API生成图片(1024x1024)
+ADB push 封面图到手机相册
   ↓
-ADB push 图片到手机 /sdcard/DCIM/Camera
-  ↓
-刷新媒体库，让小红书识别新图片
-  ↓
-ADB 从相册选择发布图文
+ADB 从相册选择 → 输入标题/正文 → 发布
 ```
 
 ---
@@ -138,17 +133,20 @@ xhs-adb-publisher/
 ├── SKILL.md                       ← OpenClaw 技能定义
 ├── scripts/
 │   ├── phone_controller.py        ← ADB 手机操控核心（文本查找为主，坐标fallback）
-│   ├── xhs_article_publisher.py   ← 文章发布 (LLM→ADB)
-│   ├── xhs_image_publisher.py     ← 图文发布 (LLM→文生图→ADB)
+│   ├── xhs_article_publisher.py   ← 文章发布 (LLM→ADB，写长文)
+│   ├── xhs_image_publisher.py     ← 🆕 图文发布 (LLM→豆包封面图→ADB)
 │   ├── xhs_comment_acquisition.py ← 评论区获客 (MCP+LLM)
-│   ├── xhs_llm.py                 ← DeepSeek API 封装
+│   ├── xhs_llm.py                 ← LLM API 封装（千帆 qianfan-code-latest）
 │   └── pexels_images.py           ← Pexels 配图
 ├── templates/
+│   ├── short-article-prompt.md    ← 🆕 短文章模板（标题≤20字，正文300-1000字）
 │   ├── article-prompt.md          ← 通用种草提示词
 │   ├── tutorial-prompt.md         ← 教程干货提示词
 │   ├── story-prompt.md            ← 故事分享提示词
 │   ├── comparison-prompt.md       ← 对比测评提示词
 │   ├── list-prompt.md             ← 清单合集提示词
+│   ├── cover-prompt-1.md          ← 🆕 封面模板1：蓝色手举手机风格
+│   ├── cover-prompt-2.md          ← 🆕 封面模板2：卡通小马梗图风格
 │   └── comment-prompt.md          ← 评论生成提示词
 ├── config/
 │   ├── publish.json               ← 发布+获客配置
@@ -167,16 +165,21 @@ xhs-adb-publisher/
 ```
 xhs_adb_publisher.py (CLI)
         │
-        ├── xhs_article_publisher.py  (LLM 生成 + 校验)
+        ├── xhs_article_publisher.py  (文章发布: LLM生成 + ADB写长文)
         │       │
         │       └── phone_controller.py  (ADB 操控手机)
         │               │
         │               └── Android 手机 · 小红书 App
         │
+        ├── xhs_image_publisher.py   (🆕 图文发布: LLM生成 + 豆包封面 + ADB发布)
+        │       │
+        │       ├── phone_controller.py  (ADB 操控手机)
+        │       └── doubao-image-create   (豆包 Seedream 5.0 生图)
+        │
         └── xhs_comment_acquisition.py  (MCP API + LLM 评论获客)
                 │
                 └── xiaohongshu-mcp 服务 (localhost:18060)
-```
+``````
 
 ### 技术栈
 
@@ -184,7 +187,8 @@ xhs_adb_publisher.py (CLI)
 |------|------|
 | `uiautomator2` | Python ←→ 手机 ATX Agent 通信 |
 | `ATX Keyboard` | 自定义输入法，支持中文注入 |
-| `DeepSeek V4-Flash` | AI 生成小红书风格文章/评论 |
+| `千帆 qianfan-code-latest` | AI 生成小红书风格文章 |
+| `豆包 Seedream 5.0` | AI 生成封面图 |
 | `ADB` | Android Debug Bridge 连接通道 |
 | `xiaohongshu-mcp` | 小红书 MCP 服务（评论区获客）|
 
@@ -201,10 +205,14 @@ xhs_adb_publisher.py (CLI)
 | 编辑页 | 输入标题 | `d(text="输入标题")` | - |
 | 编辑页 | 一键排版 | `d(text="一键排版")` | - |
 | 模板选择页 | 下一步 | `d(text="下一步")` | - |
-| 发布确认页 | 添加正文 | `textContains`("添加正文"/"添加正文或发语音") | 坐标 |
-| 发布确认页 | 公开可见 | `d(textContains="公开可见")` | 坐标 |
-| 发布确认页 | 仅自己可见 | `d(text="仅自己可见")` | 坐标 |
-| 发布确认页 | 发布笔记 | `d(text="发布笔记")` | 坐标 |
+| 发布确认页 | 添加标题 | `EditText[0].click()` | 坐标 |
+| 发布确认页 | 添加正文 | `EditText[1].click()` | 坐标 |
+| 发布确认页 | 发布笔记 | `d(text="发布笔记")` | Button遍历+坐标 |
+| — | — | — | — |
+| **图文发布** | **新增** | | |
+| 发布确认页 | 标题输入框 | `className=EditText, instance=0` | 坐标 |
+| 发布确认页 | 正文输入框 | `className=EditText, instance=1` | 坐标 |
+| 发布确认页 | 发布笔记 | `d(text="发布笔记")` / Button遍历 | 坐标 |
 
 ---
 
@@ -212,24 +220,27 @@ xhs_adb_publisher.py (CLI)
 
 ### 模型
 
-- `deepseek-v4-flash`（V4 系列，输出上限 384K tokens）
-- 环境变量 `DEEPSEEK_API_KEY` 配置 API Key
-- 环境变量 `LLM_API_URL` 可自定义 API 地址（默认 `https://api.deepseek.com/chat/completions`）
+- `qianfan-code-latest`（千帆编码模型，文章生成）
+- 环境变量 `DEEPSEEK_API_KEY` 或 `openclaw.json` 配置 API Key
+- 地址从 `openclaw.json` 的 `baiduqianfancodingplan` provider 自动读取
 
-### 校验规则
+### 校验规则（图文发布）
 
 | 规则 | 值 | 说明 |
 |------|:--:|------|
-| 编辑器正文 | 1200-2000字 | 含标点/emoji/空格，不足1200或超过2000会触发重试 |
+| 正文长度 | 300-1000字 | 图文发布专用短模板 |
 | 标题上限 | ≤20字 | 超出截断 |
-| 小红书正文上限 | ≤1000字 | 发布确认页正文长度限制 |
-| 重试机制 | 最多3次 | 字数不符合要求自动重试 |
+| xhs正文 | 直接使用LLM输出 | 正文已≤1000字，无需裁剪 |
+| 重试机制 | 最多3次 | 不符合范围自动重试 |
 
-### 输出分割
+### 封面图模板
 
-LLM 返回的正文自动切分为两部分：
-- **编辑器正文**（全部内容）→ 写长文编辑器显示
-- **小红书正文**（前 1000 字）→ 发布确认页"添加正文"文本框
+随机从以下模板中选择一个：
+- **模板1（蓝色手）**: 粗线条手绘漫画，蓝色卡通手举手机
+- **模板2（小马）**: 两格竖版漫画，棕色小马梗图风格
+
+模板变量：`{{product_slogan}}` → 提取的宣传语
+           `{{article_title}}` → 文章标题
 
 ---
 

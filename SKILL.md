@@ -23,6 +23,7 @@ metadata:
 | 功能 | 方式 | 说明 |
 |------|------|------|
 | 📝 发布文章 | ADB+LLM | LLM 生成 → Pexels 配图 → ADB 发布长文 |
+| 🖼️ **图文发布** | ADB+LLM+豆包 | 🆕 LLM生成短文 → 豆包封面图 → ADB发布图文 |
 | 💬 评论区获客 | MCP+LLM | 搜索 → AI评分 → LLM评论 → MCP发表 |
 | ✏️ 写想法 | ADB | 纯文字笔记直发 |
 | 📄 写长文 | ADB | 长文笔记（含一键排版） |
@@ -112,6 +113,22 @@ python3 xhs_adb_publisher.py --publish --dry-run --product-url "https://ai.hcrzx
 python3 xhs_adb_publisher.py --write-thought "正文内容" --title "标题"
 ```
 
+### 图文发布 🆕
+
+```bash
+# 完整图文发布（LLM生成短文 + 豆包AI封面图 + ADB发布）
+python3 xhs_adb_publisher.py --publish-image --topic "白菜价PPT"
+
+# 带产品链接
+python3 xhs_adb_publisher.py --publish-image --topic "AI工具" --product-url "https://example.com"
+
+# 指定文章类型（可选，自动检测）
+python3 xhs_adb_publisher.py --publish-image --topic "Python教程" --article-type tutorial
+
+# 仅生成不发布（预览）
+python3 xhs_adb_publisher.py --publish-image --topic "测试" --dry-run
+```
+
 ## 多设备并发发布
 
 支持同时操控多台 Android 手机（每台绑定不同小红书账号）并发发布。
@@ -160,11 +177,19 @@ xhs-adb-publisher/
 ├── scripts/
 │   ├── phone_controller.py        ← ADB 手机操控核心
 │   ├── xhs_article_publisher.py   ← 文章发布模块
+│   ├── xhs_image_publisher.py     ← 🆕 图文发布模块
 │   ├── xhs_comment_acquisition.py ← ✅ 评论区获客模块
-│   ├── xhs_llm.py                 ← LLM API 封装
+│   ├── xhs_llm.py                 ← LLM API 封装（千帆 qianfan-code-latest）
 │   └── pexels_images.py           ← Pexels 图片搜索
 ├── templates/
+│   ├── short-article-prompt.md    ← 🆕 短文章模板（300-1000字）
 │   ├── article-prompt.md          ← 文章生成提示词
+│   ├── cover-prompt-1.md          ← 🆕 封面模板1：蓝色手举手机
+│   ├── cover-prompt-2.md          ← 🆕 封面模板2：卡通小马梗图
+│   ├── tutorial-prompt.md         ← 🆕 教程提示词
+│   ├── story-prompt.md            ← 🆕 故事提示词
+│   ├── comparison-prompt.md       ← 🆕 对比提示词
+│   ├── list-prompt.md             ← 🆕 清单提示词
 │   └── comment-prompt.md          ← ✅ 评论生成提示词
 ├── config/
 │   ├── publish.json               ← 发布+获客配置
