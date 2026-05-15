@@ -2,7 +2,7 @@
 name: XHS ADB Publisher
 description: |
   小红书自动化运营技能
-  功能：文章发布（LLM生成+Pexels配图+ADB发布）+ 评论区获客（MCP+LLM）
+  功能：文章发布 + 图文发布 + 评论区获客
   基于 uiautomator2 (ADB) + xiaohongshu-mcp + DeepSeek API
 metadata:
   openclaw:
@@ -22,7 +22,7 @@ metadata:
 
 | 功能 | 方式 | 说明 |
 |------|------|------|
-| 📝 发布文章 | ADB+LLM | LLM 生成 → Pexels 配图 → ADB 发布长文 |
+| 📝 发布文章 | ADB+LLM | LLM 生成 → ADB 发布长文 |
 | 🖼️ **图文发布** | ADB+LLM+豆包 | 🆕 LLM生成短文 → 豆包封面图 → ADB发布图文 |
 | 💬 评论区获客 | MCP+LLM | 搜索 → AI评分 → LLM评论 → MCP发表 |
 | ✏️ 写想法 | ADB | 纯文字笔记直发 |
@@ -75,7 +75,6 @@ metadata:
 - `XHS_MCP_URL` — MCP 地址（默认 http://localhost:18060）
 - `XHS_PRODUCT_URL` — 默认产品链接（可选）
 - `XHS_PRODUCT_NAME` — 默认产品名称（可选）
-- `PEXELS_API_KEY` — Pexels 配图（可选，发布用）
 
 ## 快速使用
 
@@ -103,8 +102,10 @@ python3 scripts/xhs_comment_acquisition.py --auto
 ### 发布文章
 
 ```bash
-# 完整发布（LLM生成 + Pexels配图 + ADB发布）
+# 完整发布
 python3 xhs_adb_publisher.py --publish --product-url "https://ai.hcrzx.com"
+
+# 发布带配图
 
 # 仅生成不发布
 python3 xhs_adb_publisher.py --publish --dry-run --product-url "https://ai.hcrzx.com"
@@ -180,7 +181,6 @@ xhs-adb-publisher/
 │   ├── xhs_image_publisher.py     ← 🆕 图文发布模块
 │   ├── xhs_comment_acquisition.py ← ✅ 评论区获客模块
 │   ├── xhs_llm.py                 ← LLM API 封装（千帆 qianfan-code-latest）
-│   └── pexels_images.py           ← Pexels 图片搜索
 ├── templates/
 │   ├── short-article-prompt.md    ← 🆕 短文章模板（300-1000字）
 │   ├── article-prompt.md          ← 文章生成提示词
@@ -193,7 +193,6 @@ xhs-adb-publisher/
 │   └── comment-prompt.md          ← ✅ 评论生成提示词
 ├── config/
 │   ├── publish.json               ← 发布+获客配置
-│   ├── pexels.json                ← Pexels 配置
 │   └── keywords.json              ← ✅ 种子关键词
 └── data/                           ← 运行时数据（评论历史）
 ```

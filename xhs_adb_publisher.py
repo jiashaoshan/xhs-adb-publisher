@@ -3,7 +3,7 @@
 小红书文章发布技能 (xhs-adb-publisher) — 统一编排入口
 
 功能:
-  1. 发布文章：LLM 生成 → Pexels 配图 → ADB 发布长文
+  1. 发布文章：LLM 生成 → ADB 发布长文
   2. 评论区获客：MCP搜索 → AI评分 → LLM评论 → MCP发表
   3. 写想法 / 写长文 (ADB 直发)
 
@@ -109,7 +109,7 @@ def main():
     parser = argparse.ArgumentParser(description="小红书运营技能工具")
     
     # 发布模式
-    parser.add_argument("--publish", action="store_true", help="完整发布: LLM→Pexels→ADB")
+    parser.add_argument("--publish", action="store_true", help="完整发布: LLM→ADB")
     parser.add_argument("--product-url", "-u", help="产品链接")
     parser.add_argument("--product-name", "-n", help="产品名称（可选）")
     parser.add_argument("--target-audience", help="目标受众（可选）")

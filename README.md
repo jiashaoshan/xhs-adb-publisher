@@ -36,8 +36,6 @@ export XHS_MCP_URL=http://localhost:18060  # MCP 服务地址（评论区获客�
 # 完整发布（推荐）
 python3 xhs_adb_publisher.py --publish --product-url "https://example.com"
 
-# 发布带配图的文章（3张Pexels图片）
-python3 xhs_adb_publisher.py --publish --product-url "https://example.com" --images 3
 
 # 仅生成不发布（预览）
 python3 xhs_adb_publisher.py --publish --dry-run --product-url "https://example.com"
@@ -137,7 +135,6 @@ xhs-adb-publisher/
 │   ├── xhs_image_publisher.py     ← 🆕 图文发布 (LLM→豆包封面图→ADB)
 │   ├── xhs_comment_acquisition.py ← 评论区获客 (MCP+LLM)
 │   ├── xhs_llm.py                 ← LLM API 封装（千帆 qianfan-code-latest）
-│   └── pexels_images.py           ← Pexels 配图
 ├── templates/
 │   ├── short-article-prompt.md    ← 🆕 短文章模板（标题≤20字，正文300-1000字）
 │   ├── article-prompt.md          ← 通用种草提示词
@@ -150,7 +147,6 @@ xhs-adb-publisher/
 │   └── comment-prompt.md          ← 评论生成提示词
 ├── config/
 │   ├── publish.json               ← 发布+获客配置
-│   ├── pexels.json                ← Pexels 配置
 │   ├── keywords.json              ← 评论区获客关键词
 │   └── devices.json.example       ← 多设备配置示例
 └── data/                           ← 运行时数据（自动创建）
