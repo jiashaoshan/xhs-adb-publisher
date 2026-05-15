@@ -96,8 +96,7 @@ def set_visibility_and_publish(device: u2.Device = None):
     if el.exists(timeout=2):
         el.click(); logger.info("点击: 公开可见")
     else:
-        # fallback到坐标
-        d.click(*_scale(d, 204, 1842)); logger.info("坐标点击可见性")
+        d.click(*_scale(d, 174, 1765)); logger.info("坐标点击可见性")
     jitter(1)
     # 弹出菜单中选择"仅自己可见"
     el = d(text="仅自己可见")
@@ -111,9 +110,7 @@ def set_visibility_and_publish(device: u2.Device = None):
     if el.exists(timeout=2):
         el.click(); logger.info("点击: 发布笔记")
     else:
-        sw = d.info.get('displayWidth', REF_W)
-        sh = d.info.get('displayHeight', REF_H)
-        d.click(int(sw * 0.65), int(sh * 0.92))
+        d.click(*_scale(d, 688, 2239))
         logger.info("坐标点击发布")
     jitter(15)
     for _ in range(3):
@@ -260,3 +257,201 @@ def publish_article(serial: str, product_url: str, article: dict, image_count: i
         }
         logger.error(f"[{serial}] ❌ 发布失败: {e}")
     return result
+
+
+def publish_image_article(serial: str, title: str, xhs_body: str, image_count: int = 1) -> dict:
+    """
+    发布图文笔记（从相册选择图片）
+    
+    流程:
+    桌面 → 打开小红书 → 点击+号 → 从相册选择
+    → 选择图片 → 下一步（等待5s）→ 下一步
+    → 在'添加标题'处输入标题（等待3s）
+    → 在'添加正文或发语音'处输入正文
+    → 直接点击'发布笔记' → 等待15s → 3下home回桌面
+    """
+    d = get_device(serial)
+    
+    logger.info(f"[{serial}] 开始发布图文: {title}")
+    
+    # 回到桌面并打开小红书
+    d.press("home")
+    jitter(0.5)
+    d.app_start("com.xingin.xhs")
+    jitter(3, 0.1)
+    
+    # 处理草稿弹窗
+    for txt in ["存草稿", "不保存"]:
+        el = d(textContains=txt)
+        if el.exists(timeout=1):
+            el.click()
+            jitter(1)
+            break
+    
+    # 点击底部+号
+    sw = d.info.get("displayWidth", 1080)
+    sh = d.info.get("displayHeight", 2400)
+    d.click(sw / 2, sh * 0.95)
+    logger.info("点击 +号")
+    jitter(2)
+    
+    # 点击"从相册选择"
+    el = d(text="从相册选择")
+    if el.exists(timeout=2):
+        el.click()
+        logger.info("点击: 从相册选择")
+    else:
+        for txt in ["相册", "选择照片"]:
+            el = d(textContains=txt)
+            if el.exists(timeout=1):
+                el.click()
+                logger.info(f"点击: {txt}")
+                break
+        else:
+            d.click(sw / 2, sh * 0.75)
+            logger.info("坐标点击相册区域")
+    jitter(2)
+    
+    # 选择图片（点击右上角对勾）
+    logger.info(f"选择 {image_count} 张图片...")
+    selected = 0
+    for i in range(image_count):
+        row = i // 3
+        col = i % 3
+        cell_cx = 180 + col * 360
+        cell_cy = 650 + row * 360
+        check_x = cell_cx + 80
+        check_y = cell_cy - 120
+        
+        sx, sy = _scale(d, check_x, check_y)
+        d.click(sx, sy)
+        logger.info(f"  点击第{i+1}张图对勾: ({sx}, {sy})")
+        jitter(0.4)
+        selected += 1
+        if selected >= image_count:
+            break
+    
+    logger.info(f"已选择 {selected} 张图片")
+    jitter(1)
+    
+    # 点击"下一步"（进入编辑页）
+    for _ in range(5):
+        btns = list(d(text="下一步"))
+        if btns:
+            btns[-1].click()
+            logger.info("点击: 下一步（进入编辑页）")
+            break
+        jitter(0.5)
+    
+    # 等待5秒确保编辑页渲染完成
+    logger.info("等待编辑页渲染（5秒）...")
+    jitter(5, 0.1)
+    
+    # 再次点击"下一步"（进入发布确认页）
+    for _ in range(5):
+        btns = list(d(text="下一步"))
+        if btns:
+            btns[-1].click()
+            logger.info("点击: 下一步（进入发布确认页）")
+            break
+        jitter(0.5)
+    
+    # 等待发布确认页完全渲染（10秒）
+    logger.info("等待发布确认页渲染（10秒）...")
+    jitter(10, 0.1)
+    
+    # 查找EditText（多次尝试，防止ATX缓存问题）
+    edit_texts = []
+    for retry in range(3):
+        edit_texts = list(d(className="android.widget.EditText"))
+        if len(edit_texts) >= 2:
+            logger.info(f"找到 {len(edit_texts)} 个EditText")
+            break
+        if retry < 2:
+            logger.info(f"EditText不足({len(edit_texts)}个)，重试...")
+            jitter(1)
+    
+    # 在"添加标题"处输入标题
+    if title:
+        if len(edit_texts) >= 1:
+            edit_texts[0].click()
+            logger.info("点击: 添加标题 (EditText[0])")
+            jitter(0.5)
+            d.send_keys(title[:20])
+            logger.info(f"输入标题: {title[:20]}")
+            # 等待3秒让UI稳定，再输正文
+            logger.info("等待3秒后输入正文...")
+            jitter(3, 0.1)
+        else:
+            d.click(*_scale(d, 559, 548))  # 精确坐标：添加标题EditText中心
+            logger.info("坐标点击标题区域")
+    
+    # 在"添加正文或发语音"处输入正文
+    if xhs_body:
+        body_et = d(className="android.widget.EditText", instance=1)
+        if body_et.exists(timeout=3):
+            body_et.click()
+            logger.info("点击: 添加正文或发语音 (EditText[1])")
+            jitter(0.5)
+            chunk_size = 500
+            for i in range(0, len(xhs_body), chunk_size):
+                chunk = xhs_body[i:i+chunk_size]
+                d.send_keys(chunk)
+                jitter(0.2)
+            logger.info(f"输入正文: {len(xhs_body)}字")
+        else:
+            d.click(*_scale(d, 540, 998))  # 精确坐标：添加正文或发语音EditText中心
+            logger.info("坐标点击正文区域")
+            jitter(0.5)
+            chunk_size = 500
+            for i in range(0, len(xhs_body), chunk_size):
+                chunk = xhs_body[i:i+chunk_size]
+                d.send_keys(chunk)
+                jitter(0.2)
+            logger.info(f"输入正文: {len(xhs_body)}字")
+    
+    # 等待5秒确保页面稳定，再点击"发布笔记"
+    logger.info("等待5秒后点击发布笔记...")
+    jitter(5, 0.1)
+    
+    # 优先文本查找"发布笔记"，试试多种匹配方式
+    pub_clicked = False
+    for sel in [d(text="发布笔记"), d(textContains="发布笔记"), d(text="发布"), d(descriptionContains="发布")]:
+        if sel.exists(timeout=2):
+            sel.click()
+            logger.info("点击: 发布笔记")
+            pub_clicked = True
+            break
+    
+    if not pub_clicked:
+        # 遍历所有Button
+        for b in d(className="android.widget.Button"):
+            txt = b.info.get("text", "")
+            desc = b.info.get("contentDescription", "")
+            if "发布" in txt or "发布" in desc:
+                b.click()
+                logger.info(f"点击: 发布笔记 (viaButton: text='{txt}')")
+                pub_clicked = True
+                break
+    
+    if not pub_clicked:
+        d.click(*_scale(d, 688, 2239))
+        logger.info("坐标点击发布")
+    
+    # 等待15秒发布动画 + 3下home回桌面
+    logger.info("等待发布动画（15秒）...")
+    jitter(15)
+    for _ in range(3):
+        d.press("home")
+        jitter(0.3)
+    
+    # 关闭小红书后台
+    d.app_stop('com.xingin.xhs')
+    logger.info("关闭小红书后台")
+    
+    return {
+        "serial": serial,
+        "status": "published",
+        "title": title,
+        "image_count": image_count,
+    }

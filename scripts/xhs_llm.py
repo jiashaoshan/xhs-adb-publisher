@@ -8,7 +8,7 @@ LLM_API_URL = None
 LLM_API_KEY = None
 DEFAULT_MODEL = "qianfan-code-latest"
 DEFAULT_MAX_TOKENS = 8192
-DEFAULT_TIMEOUT = 180
+DEFAULT_TIMEOUT = 300
 
 def _load_llm_config():
     """从 openclaw.json 读取千帆 LLM 配置"""

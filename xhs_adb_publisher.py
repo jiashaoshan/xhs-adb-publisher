@@ -92,6 +92,18 @@ def cmd_write_long(args):
     xie_chang_wen(args.write_long, args.xhs_body or "", args.title or "")
     print(f"✅ 写长文已发布")
 
+def cmd_publish_image(args):
+    """图文发布: LLM → 文生图 → ADB"""
+    from xhs_image_publisher import run
+    result = run(
+        topic=args.topic or args.product_url,
+        product_url=args.product_url or "",
+        article_type=args.article_type,
+        dry_run=args.dry_run,
+    )
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+    return result
+
 def main():
     banner()
     parser = argparse.ArgumentParser(description="小红书运营技能工具")
@@ -116,6 +128,12 @@ def main():
     parser.add_argument("--title", help="标题")
     parser.add_argument("--content", help="正文内容（写想法用）")
     
+    # 图文发布模式
+    parser.add_argument("--publish-image", action="store_true", help="图文发布: LLM→文生图→ADB")
+    parser.add_argument("--topic", "-t", help="图文发布主题（或产品链接）")
+    parser.add_argument("--article-type", choices=["general", "tutorial", "story", "comparison", "list"],
+                        help="文章类型（自动检测）")
+    
     args = parser.parse_args()
     
     if args.publish:
@@ -126,6 +144,8 @@ def main():
         cmd_write_thought(args)
     elif args.write_long:
         cmd_write_long(args)
+    elif args.publish_image:
+        cmd_publish_image(args)
     else:
         parser.print_help()
 

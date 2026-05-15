@@ -42,6 +42,15 @@ python3 xhs_adb_publisher.py --publish --product-url "https://example.com" --ima
 # 仅生成不发布（预览）
 python3 xhs_adb_publisher.py --publish --dry-run --product-url "https://example.com"
 
+# 图文发布（AI生成文章+AI配图）
+python3 xhs_adb_publisher.py --publish-image --topic "AI工具推荐"
+
+# 图文发布（指定类型：tutorial/story/comparison/list/general）
+python3 xhs_adb_publisher.py --publish-image --topic "Python入门教程" --article-type tutorial
+
+# 图文发布（仅生成，不发布）
+python3 xhs_adb_publisher.py --publish-image --topic "效率神器" --dry-run
+
 # 评论区获客
 python3 xhs_adb_publisher.py --acquire --keyword "AI工具" --product-url "https://example.com"
 
@@ -83,6 +92,40 @@ python3 xhs_adb_publisher.py --write-thought "正文" --title "标题"
 → 添加标题 → 仅自己可见 → 发布 → 回桌面
 ```
 
+### 图文发布（AI生成文章+配图）
+
+```
+桌面 → 打开小红书 → 处理草稿弹窗(如有) → 点击底部+号
+→ 点击"从相册选择"(文本查找)
+→ 选择图片(封面1张+内容4张，共5张)
+→ 点击下一步(文本查找) → 进入图片编辑页
+→ 点击下一步(文本查找) → 进入发布确认页
+→ 输入标题(≤20字)
+→ 点击"添加正文" → 输入小红书正文(≤1000字)
+→ 点击"公开可见"(文本查找) → 选择"仅自己可见"(文本查找)
+→ 点击"发布笔记"(文本查找)
+→ 等待 15s（发布动画播放）→ 按3次home键回到桌面
+```
+
+**图文发布完整流程（后台）：**
+```
+输入主题/产品链接
+  ↓
+LLM 生成小红书热文(2000-2500字)
+  ↓
+自动检测文章类型(general/tutorial/story/comparison/list)
+  ↓
+根据文章内容生成文生图提示词(封面1张+内容4张)
+  ↓
+调用豆包API生成图片(1024x1024)
+  ↓
+ADB push 图片到手机 /sdcard/DCIM/Camera
+  ↓
+刷新媒体库，让小红书识别新图片
+  ↓
+ADB 从相册选择发布图文
+```
+
 ---
 
 ## 文件结构
@@ -96,11 +139,16 @@ xhs-adb-publisher/
 ├── scripts/
 │   ├── phone_controller.py        ← ADB 手机操控核心（文本查找为主，坐标fallback）
 │   ├── xhs_article_publisher.py   ← 文章发布 (LLM→ADB)
+│   ├── xhs_image_publisher.py     ← 图文发布 (LLM→文生图→ADB)
 │   ├── xhs_comment_acquisition.py ← 评论区获客 (MCP+LLM)
 │   ├── xhs_llm.py                 ← DeepSeek API 封装
 │   └── pexels_images.py           ← Pexels 配图
 ├── templates/
-│   ├── article-prompt.md          ← 文章生成提示词
+│   ├── article-prompt.md          ← 通用种草提示词
+│   ├── tutorial-prompt.md         ← 教程干货提示词
+│   ├── story-prompt.md            ← 故事分享提示词
+│   ├── comparison-prompt.md       ← 对比测评提示词
+│   ├── list-prompt.md             ← 清单合集提示词
 │   └── comment-prompt.md          ← 评论生成提示词
 ├── config/
 │   ├── publish.json               ← 发布+获客配置
