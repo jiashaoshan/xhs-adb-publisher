@@ -15,7 +15,7 @@ SCRIPT_DIR = Path(__file__).parent.absolute()
 SKILL_DIR = SCRIPT_DIR.parent
 sys.path.insert(0, str(SCRIPT_DIR))
 
-from xhs_llm import call_llm_json
+from xhs_llm import call_llm, call_llm_json, analyze_product, build_writing_prompt
 from phone_controller import publish_image_article
 
 logger = logging.getLogger("xhs-image-publisher")
@@ -25,7 +25,7 @@ DATA_DIR = SKILL_DIR / "data"
 CONFIG_DIR = SKILL_DIR / "config"
 PUBLISHED_FILE = DATA_DIR / "published-articles.json"
 
-MIN_BODY_LEN = 300
+MIN_BODY_LEN = 500
 MAX_BODY_LEN = 1000
 MAX_TITLE_LEN = 20
 MAX_XHS_BODY = 1000
@@ -77,46 +77,73 @@ def detect_article_type(topic: str, product_url: str = "") -> str:
     else:
         return "general"
 
-def _retry_llm_generate(topic: str, product_url: str, article_type: str) -> dict:
-    """带重试的 LLM 文章生成，确保1500-2000字"""
-    prompt_template = load_prompt(article_type)
-    if not prompt_template:
-        raise FileNotFoundError(f"提示词模板未找到")
-    
-    prompt = prompt_template.replace("{{topic}}", topic)
-    prompt = prompt.replace("{{product_url}}", product_url)
-    prompt = prompt.replace("{{product_name}}", topic)
-    
+def _parse_article_output(raw: str) -> tuple:
+    """从 LLM 纯文本输出中提取标题和正文"""
+    lines = raw.strip().split("\n")
+    title = ""
+    body = raw.strip()
+    for i, line in enumerate(lines):
+        stripped = line.strip()
+        # ### 标题：xxx、### xxx、标题：xxx
+        if re.search(r'#*\s*标题\s*[：:]\s*', stripped):
+            title = re.sub(r'#*\s*标题\s*[：:]\s*', '', stripped).strip()
+            body = "\n".join(lines[i+1:]).strip()
+            break
+        # ### xxx（Markdown标题当作标题）
+        if re.match(r'^#{1,3}\s+\S', stripped) and 4 < len(stripped) < 40:
+            title = re.sub(r'^#+\s+', '', stripped).strip()
+            body = "\n".join(lines[i+1:]).strip()
+            break
+        # 第一行短文本做标题
+        if i == 0 and len(stripped) < 40 and not stripped.startswith("#") and not stripped.startswith("!"):
+            title = stripped
+            body = "\n".join(lines[1:]).strip()
+            break
+    # 清理 body 中的 markdown 标题标记和开头标点
+    body = re.sub(r'^###?\s*正文\s*[：:]\s*', '', body, flags=re.MULTILINE)
+    body = re.sub(r'^[：:]\s*', '', body)
+    return title, body
+
+
+def _run_article_generation(product_url: str, product_name: str = "") -> dict:
+    """两步法：1. 抓取网页分析产品 2. 按用户模板生成文章（带长度重试）"""
+    # 第一步：抓取网页 → 分析产品
+    logger.info("第一步：抓取网页并分析产品...")
+    product_info = analyze_product(product_url, product_name)
+
+    # 用用户模板生成写作提示词
+    prompt = build_writing_prompt(product_info, product_url)
+
+    # 第二步：生成文章（带长度重试）
     for attempt in range(1, MAX_RETRIES + 1):
-        logger.info(f"LLM 生成文章第 {attempt}/{MAX_RETRIES} 次...")
-        
-        length_hint = f"\n\n⚠️ 重要：正文总字数（含标点空格）必须在{MIN_BODY_LEN}-{MAX_BODY_LEN}字之间。"
+        logger.info(f"第二步：LLM 生成文章第 {attempt}/{MAX_RETRIES} 次...")
+
+        length_hint = f"\n\n⚠️ 重要：正文总字数必须在{MIN_BODY_LEN}-{MAX_BODY_LEN}字之间。"
         if attempt > 1:
-            length_hint += f"\n上次生成字数不符合要求，请调整。\n请严格控制字数，不要超出范围。"
-        
-        result = call_llm_json(
-            system_prompt=f"你是一位小红书内容营销专家。{length_hint}",
+            length_hint += f"\n上次生成字数不符合要求，请调整。"
+
+        raw = call_llm(
+            system_prompt=f"你是一个分享真实产品体验的小红书博主。{length_hint}",
             user_prompt=prompt + length_hint,
             max_tokens=4096,
             temperature=0.7,
         )
-        
-        title = result.get("title", "")
-        body = result.get("body", "")
+
+        title, body = _parse_article_output(raw)
         total_len = len(body.strip())
-        
+
         logger.info(f"  LLM返回: 标题{len(title)}字 正文{total_len}字")
-        
+
         if MIN_BODY_LEN <= total_len <= MAX_BODY_LEN or attempt >= MAX_RETRIES:
-            return {"title": title, "body": body, "retries": attempt, "article_type": article_type}
-        
+            return {"title": title, "body": body, "retries": attempt}
+
         if total_len < MIN_BODY_LEN:
             logger.warning(f"  正文仅{total_len}字符，不足{MIN_BODY_LEN}，重试...")
         else:
             logger.warning(f"  正文{total_len}字符，超过{MAX_BODY_LEN}，重试...")
-    
+
     logger.warning(f"  已重试{MAX_RETRIES}次，使用当前结果")
-    return {"title": title, "body": body, "retries": MAX_RETRIES, "article_type": article_type}
+    return {"title": title, "body": body, "retries": MAX_RETRIES}
 
 
 def generate_cover_prompt(title: str, body: str, product_url: str = "") -> str:
@@ -215,22 +242,22 @@ def generate_article(topic: str, product_url: str = "", article_type: str = None
     """生成文章 + 封面图提示词"""
     if not article_type:
         article_type = detect_article_type(topic, product_url)
-    
+
     logger.info(f"文章类型: {article_type}")
-    
-    # 步骤1: 生成文章（标题≤20字，正文≤1000字）
+
+    # 步骤1: 生成文章（抓取网页 → 分析产品 → 按模板生成）
     logger.info("步骤1/2: LLM 生成文章...")
-    article = _retry_llm_generate(topic, product_url, article_type)
-    
+    article = _run_article_generation(product_url, topic)
+
     # 步骤2: 生成封面图提示词（从模板填充）
     logger.info("步骤2/2: 生成封面图提示词...")
     cover_prompt = generate_cover_prompt(article["title"], article["body"], product_url)
-    
-    # 正文已≤1000字，直接用作xhs正文
+
+    # 正文直接用作xhs正文
     xhs_body = article["body"]
     if len(xhs_body) > MAX_XHS_BODY:
         xhs_body = xhs_body[:MAX_XHS_BODY]
-    
+
     return {
         "title": article["title"][:MAX_TITLE_LEN * 2],
         "body": article["body"],

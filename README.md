@@ -2,6 +2,8 @@
 
 通过 ADB 操控 Android 手机，自动化发布小红书笔记。
 
+核心流程：**抓取产品网页 → LLM 分析产品 → 按模板生成文章 → ADB 发布**
+
 ---
 
 ## 快速开始
@@ -11,9 +13,11 @@
 ```bash
 pip install uiautomator2 adbutils requests
 export ANDROID_SERIAL=<你的设备序列号>   # adb devices 查看（仅发布需要）
-export DEEPSEEK_API_KEY=sk-xxx           # LLM 文章/评论生成
-export XHS_MCP_URL=http://localhost:18060  # MCP 服务地址（评论区获客需要）
 ```
+
+**LLM 配置**：编辑 `~/.openclaw/openclaw.json`，在 `models.providers` 中配置以下 provider：
+- `deepseek`（主用，模型 `deepseek-v4-flash`）
+- `volcengine-plan` 或 `baiduqianfan`（备选，429 限流时自动切换）
 
 **评论区获客额外依赖：**
 - 启动 [xiaohongshu-mcp](https://github.com/yanzengyun/xiaohongshu-mcp) 服务
@@ -36,12 +40,11 @@ export XHS_MCP_URL=http://localhost:18060  # MCP 服务地址（评论区获客�
 # 完整发布（推荐）
 python3 xhs_adb_publisher.py --publish --product-url "https://example.com"
 
-
 # 仅生成不发布（预览）
 python3 xhs_adb_publisher.py --publish --dry-run --product-url "https://example.com"
 
 # 图文发布（AI生成文章+AI配图）
-python3 xhs_adb_publisher.py --publish-image --topic "AI工具推荐"
+python3 xhs_adb_publisher.py --publish-image --topic "AI工具推荐" --product-url "https://example.com"
 
 # 图文发布（指定类型：tutorial/story/comparison/list/general）
 python3 xhs_adb_publisher.py --publish-image --topic "Python入门教程" --article-type tutorial
@@ -108,7 +111,9 @@ python3 xhs_adb_publisher.py --write-thought "正文" --title "标题"
 ```
 输入主题/产品链接
   ↓
-LLM 生成小红书正文(≤1000字)
+抓取产品网页 → LLM 分析产品信息
+  ↓
+LLM 按用户模板生成小红书正文(≤1000字)
   ↓
 随机选封面模板 → 填充模板参数(product_slogan + article_title)
   ↓
@@ -132,18 +137,19 @@ xhs-adb-publisher/
 ├── scripts/
 │   ├── phone_controller.py        ← ADB 手机操控核心（文本查找为主，坐标fallback）
 │   ├── xhs_article_publisher.py   ← 文章发布 (LLM→ADB，写长文)
-│   ├── xhs_image_publisher.py     ← 🆕 图文发布 (LLM→豆包封面图→ADB)
+│   ├── xhs_image_publisher.py     ← 图文发布 (LLM→豆包封面图→ADB)
 │   ├── xhs_comment_acquisition.py ← 评论区获客 (MCP+LLM)
-│   ├── xhs_llm.py                 ← LLM API 封装（千帆 qianfan-code-latest）
+│   ├── xhs_llm.py                 ← LLM API 封装（主用 deepseek-v4-flash，备选 fallback）
 ├── templates/
-│   ├── short-article-prompt.md    ← 🆕 短文章模板（标题≤20字，正文300-1000字）
-│   ├── article-prompt.md          ← 通用种草提示词
+│   ├── user-article-prompt.md     ← 用户自定义文章模板（含 {{product_*}} 占位符）
+│   ├── short-article-prompt.md    ← 短文章模板（标题≤20字，正文300-1000字）
+│   ├── article-prompt.md          ← 长文章模板
 │   ├── tutorial-prompt.md         ← 教程干货提示词
 │   ├── story-prompt.md            ← 故事分享提示词
 │   ├── comparison-prompt.md       ← 对比测评提示词
 │   ├── list-prompt.md             ← 清单合集提示词
-│   ├── cover-prompt-1.md          ← 🆕 封面模板1：蓝色手举手机风格
-│   ├── cover-prompt-2.md          ← 🆕 封面模板2：卡通小马梗图风格
+│   ├── cover-prompt-1.md          ← 封面模板1：蓝色手举手机风格
+│   ├── cover-prompt-2.md          ← 封面模板2：卡通小马梗图风格
 │   └── comment-prompt.md          ← 评论生成提示词
 ├── config/
 │   ├── publish.json               ← 发布+获客配置
@@ -167,7 +173,7 @@ xhs_adb_publisher.py (CLI)
         │               │
         │               └── Android 手机 · 小红书 App
         │
-        ├── xhs_image_publisher.py   (🆕 图文发布: LLM生成 + 豆包封面 + ADB发布)
+        ├── xhs_image_publisher.py   (图文发布: LLM生成 + 豆包封面 + ADB发布)
         │       │
         │       ├── phone_controller.py  (ADB 操控手机)
         │       └── doubao-image-create   (豆包 Seedream 5.0 生图)
@@ -175,7 +181,7 @@ xhs_adb_publisher.py (CLI)
         └── xhs_comment_acquisition.py  (MCP API + LLM 评论获客)
                 │
                 └── xiaohongshu-mcp 服务 (localhost:18060)
-``````
+```
 
 ### 技术栈
 
@@ -183,7 +189,8 @@ xhs_adb_publisher.py (CLI)
 |------|------|
 | `uiautomator2` | Python ←→ 手机 ATX Agent 通信 |
 | `ATX Keyboard` | 自定义输入法，支持中文注入 |
-| `千帆 qianfan-code-latest` | AI 生成小红书风格文章 |
+| `deepseek-v4-flash` | AI 生成小红书风格文章（主用） |
+| `kimi-k2.5` / `qianfan-code-latest` | AI 生成（429 限流时自动 fallback） |
 | `豆包 Seedream 5.0` | AI 生成封面图 |
 | `ADB` | Android Debug Bridge 连接通道 |
 | `xiaohongshu-mcp` | 小红书 MCP 服务（评论区获客）|
@@ -205,7 +212,7 @@ xhs_adb_publisher.py (CLI)
 | 发布确认页 | 添加正文 | `EditText[1].click()` | 坐标 |
 | 发布确认页 | 发布笔记 | `d(text="发布笔记")` | Button遍历+坐标 |
 | — | — | — | — |
-| **图文发布** | **新增** | | |
+| **图文发布** | | | |
 | 发布确认页 | 标题输入框 | `className=EditText, instance=0` | 坐标 |
 | 发布确认页 | 正文输入框 | `className=EditText, instance=1` | 坐标 |
 | 发布确认页 | 发布笔记 | `d(text="发布笔记")` / Button遍历 | 坐标 |
@@ -214,20 +221,61 @@ xhs_adb_publisher.py (CLI)
 
 ## LLM 文章生成
 
-### 模型
+### 两步法流程
 
-- `qianfan-code-latest`（千帆编码模型，文章生成）
-- 环境变量 `DEEPSEEK_API_KEY` 或 `openclaw.json` 配置 API Key
-- 地址从 `openclaw.json` 的 `baiduqianfancodingplan` provider 自动读取
+```
+[产品链接]
+    ↓
+[第一步: 抓取网页] → fetch_webpage_text(url)
+    ↓
+   LLM 提取结构化信息 → analyze_product()
+    ↓
+  {"product_name", "positioning", "core_features", "characteristics"}
+    ↓
+[第二步: 填充模板] → templates/user-article-prompt.md
+    ↓
+   替换 {{product_name}} {{positioning}} {{core_features}} {{characteristics}} {{product_url}}
+    ↓
+   LLM 生成小红书正文（纯文本输出）
+    ↓
+   _parse_article_output() 提取标题+正文
+```
 
-### 校验规则（图文发布）
+### 模型与 Fallback
 
-| 规则 | 值 | 说明 |
-|------|:--:|------|
-| 正文长度 | 300-1000字 | 图文发布专用短模板 |
-| 标题上限 | ≤20字 | 超出截断 |
-| xhs正文 | 直接使用LLM输出 | 正文已≤1000字，无需裁剪 |
-| 重试机制 | 最多3次 | 不符合范围自动重试 |
+从 `~/.openclaw/openclaw.json` 的 `models.providers` 自动读取：
+
+| 优先级 | Provider | 模型 | 说明 |
+|:------:|----------|------|------|
+| 1 | `deepseek` | `deepseek-v4-flash` | 主用 |
+| 2 | `volcengine-plan` | `kimi-k2.5` | 429 限流时自动切换 |
+| 3 | `baiduqianfan` / `qianfan` | `qianfan-code-latest` | 备选兜底 |
+
+支持通过环境变量 `DEEPSEEK_API_KEY` / `LLM_API_URL` 配置。
+
+### 提示词模板
+
+文章内容由 `templates/user-article-prompt.md` 控制。这是一个外部化配置文件，
+可随时编辑，无需改代码。模板支持以下占位符：
+
+- `{{product_name}}` — 产品名称
+- `{{positioning}}` — 产品定位
+- `{{core_features}}` — 核心功能
+- `{{characteristics}}` — 特点列表
+- `{{product_url}}` — 产品链接
+
+默认模板风格：真实体验分享、无营销味、自然软推广。
+
+### 校验规则
+
+| 模式 | 规则 | 值 | 说明 |
+|------|------|:--:|------|
+| 长文 | 正文长度 | 1200-2000字 | `_retry_llm()` 自动重试 |
+| 长文 | 标题上限 | ≤20字 | 含 Emoji |
+| 长文 | 小红书正文 | ≤1000字 | LLM 精简生成 + 产品 CTA |
+| 图文 | 正文长度 | 500-1000字 | `_run_article_generation()` 自动重试 |
+| 图文 | 标题上限 | ≤20字 | 超出截断 |
+| 通用 | 重试机制 | 最多3次 | 不符合范围自动重试 |
 
 ### 封面图模板
 
@@ -299,8 +347,11 @@ adb shell settings get secure default_input_method
 ### Q: 发布确认页卡住
 脚本内置了 24s 固定等待 +"图片生成中"检测，确保预览渲染完成后再操作。如果仍然卡住，可能是小红书本版更新后控件文本变了，可探查当前页面文本后更新 `phone_controller.py` 中的查找字符串。
 
-### Q: `DEEPSEEK_API_KEY` 在哪里配置？
-可通过环境变量设置，或在 `~/.openclaw/openclaw.json` 的 `env` 段配置。
+### Q: 模板可以自定义吗？
+可以。编辑 `templates/user-article-prompt.md` 即可，支持 `{{product_name}}` 等占位符。修改立即生效，无需重启。
+
+### Q: 如何切换 LLM 模型？
+编辑 `~/.openclaw/openclaw.json` 的 `models.providers`，将 `deepseek` provider 下的模型 ID 改为目标模型。
 
 ---
 

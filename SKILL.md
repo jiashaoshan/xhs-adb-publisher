@@ -3,12 +3,12 @@ name: XHS ADB Publisher
 description: |
   小红书自动化运营技能
   功能：文章发布 + 图文发布 + 评论区获客
-  基于 uiautomator2 (ADB) + xiaohongshu-mcp + DeepSeek API
+  基于 uiautomator2 (ADB) + xiaohongshu-mcp + LLM（deepseek-v4-flash 主用）
 metadata:
   openclaw:
     emoji: "📕"
     requires:
-      env: ["DEEPSEEK_API_KEY", "ANDROID_SERIAL"]
+      env: ["ANDROID_SERIAL"]
       services: ["xiaohongshu-mcp (http://localhost:18060)"]
     category: "acquisition"
     tags: ["xiaohongshu", "publish", "adb", "automation", "ai", "comment-acquisition"]
@@ -16,17 +16,39 @@ metadata:
 
 # 小红书运营技能 (xhs-adb-publisher)
 
-双引擎驱动：ADB 操控手机发布笔记 + MCP API 评论区获客。
+两步法文章生成：**抓取产品网页 → LLM 分析 → 模板填充 → ADB 发布**。
 
 ## 功能矩阵
 
 | 功能 | 方式 | 说明 |
 |------|------|------|
-| 📝 发布文章 | ADB+LLM | LLM 生成 → ADB 发布长文 |
-| 🖼️ **图文发布** | ADB+LLM+豆包 | 🆕 LLM生成短文 → 豆包封面图 → ADB发布图文 |
+| 📝 发布文章 | ADB+LLM | 抓网页→LLM分析→模板生成→ADB发布长文 |
+| 🖼️ 图文发布 | ADB+LLM+豆包 | LLM生成短文 → 豆包封面图 → ADB发布图文 |
 | 💬 评论区获客 | MCP+LLM | 搜索 → AI评分 → LLM评论 → MCP发表 |
 | ✏️ 写想法 | ADB | 纯文字笔记直发 |
 | 📄 写长文 | ADB | 长文笔记（含一键排版） |
+
+## 文章生成流程
+
+```
+[产品链接]
+    ↓
+[第一步: 抓取网页] → fetch_webpage_text(url) — 含 SPA 兼容 (meta 兜底)
+    ↓
+  LLM 提取结构化信息 → analyze_product()
+    ↓
+  {product_name, positioning, core_features, characteristics}
+    ↓
+[第二步: 模板填充] → templates/user-article-prompt.md
+    ↓
+  替换 {{product_name}} {{positioning}} {{core_features}} {{characteristics}} {{product_url}}
+    ↓
+  LLM 生成小红书正文（纯文本输出）
+    ↓
+  _parse_article_output() 提取标题+正文（支持多种格式）
+    ↓
+  发布/预览
+```
 
 ## 评论区获客流程
 
@@ -55,6 +77,18 @@ metadata:
 | 提问互动型 | 提出开放性问题，引导作者回复 |
 | 经验交流型 | 分享自身经历，建立平等交流 |
 
+## LLM 模型配置
+
+从 `~/.openclaw/openclaw.json` 的 `models.providers` 自动读取：
+
+| 优先级 | Provider | 模型 | 说明 |
+|:------:|----------|------|------|
+| 1 | `deepseek` | `deepseek-v4-flash` | 主用 |
+| 2 | `volcengine-plan` | `kimi-k2.5` | 429 限流时自动切换 |
+| 3 | `baiduqianfan` / `qianfan` | `qianfan-code-latest` | 备选兜底 |
+
+也可通过环境变量 `DEEPSEEK_API_KEY` / `LLM_API_URL` 配置。
+
 ## 依赖
 
 ### 硬件
@@ -70,13 +104,41 @@ metadata:
   ```
 
 ### 环境变量
-- `DEEPSEEK_API_KEY` — LLM 文章/评论生成
 - `ANDROID_SERIAL` — ADB 设备串号（仅发布需要）
 - `XHS_MCP_URL` — MCP 地址（默认 http://localhost:18060）
 - `XHS_PRODUCT_URL` — 默认产品链接（可选）
 - `XHS_PRODUCT_NAME` — 默认产品名称（可选）
 
 ## 快速使用
+
+### 发布文章（两步法生成 + ADB 发布）
+
+```bash
+# 完整发布
+python3 xhs_adb_publisher.py --publish --product-url "https://ai.hcrzx.com"
+
+# 仅生成不发布（预览）
+python3 xhs_adb_publisher.py --publish --dry-run --product-url "https://ai.hcrzx.com"
+
+# 直接写想法
+python3 xhs_adb_publisher.py --write-thought "正文内容" --title "标题"
+```
+
+### 图文发布
+
+```bash
+# 完整图文发布（LLM生成短文 + 豆包AI封面图 + ADB发布）
+python3 xhs_adb_publisher.py --publish-image --topic "白菜价PPT"
+
+# 带产品链接
+python3 xhs_adb_publisher.py --publish-image --topic "AI工具" --product-url "https://example.com"
+
+# 指定文章类型（可选，自动检测）
+python3 xhs_adb_publisher.py --publish-image --topic "Python教程" --article-type tutorial
+
+# 仅生成不发布（预览）
+python3 xhs_adb_publisher.py --publish-image --topic "测试" --dry-run
+```
 
 ### 评论区获客
 
@@ -97,37 +159,6 @@ python3 scripts/xhs_comment_acquisition.py -k "效率工具" --max-comments 3
 export XHS_PRODUCT_URL="https://ai.hcrzx.com"
 export XHS_PRODUCT_NAME="慧辰AI分析"
 python3 scripts/xhs_comment_acquisition.py --auto
-```
-
-### 发布文章
-
-```bash
-# 完整发布
-python3 xhs_adb_publisher.py --publish --product-url "https://ai.hcrzx.com"
-
-# 发布带配图
-
-# 仅生成不发布
-python3 xhs_adb_publisher.py --publish --dry-run --product-url "https://ai.hcrzx.com"
-
-# 直接写想法
-python3 xhs_adb_publisher.py --write-thought "正文内容" --title "标题"
-```
-
-### 图文发布 🆕
-
-```bash
-# 完整图文发布（LLM生成短文 + 豆包AI封面图 + ADB发布）
-python3 xhs_adb_publisher.py --publish-image --topic "白菜价PPT"
-
-# 带产品链接
-python3 xhs_adb_publisher.py --publish-image --topic "AI工具" --product-url "https://example.com"
-
-# 指定文章类型（可选，自动检测）
-python3 xhs_adb_publisher.py --publish-image --topic "Python教程" --article-type tutorial
-
-# 仅生成不发布（预览）
-python3 xhs_adb_publisher.py --publish-image --topic "测试" --dry-run
 ```
 
 ## 多设备并发发布
@@ -167,6 +198,24 @@ python3 batch_publisher.py \
 ]
 ```
 
+## 提示词模板自定义
+
+文章内容由 `templates/user-article-prompt.md` 控制，可随时编辑无需改代码：
+
+```markdown
+【产品信息】
+- 产品名：{{product_name}}
+- 定位：{{positioning}}
+- 核心功能：{{core_features}}
+- 特点：{{characteristics}}
+
+【写作要求】
+- 标题不超过20字（含Emoji），不用营销词
+- 正文以个人真实使用体验切入
+- 语气像跟朋友聊天
+- 自然加入产品链接（{{product_url}}）
+```
+
 ## 文件结构
 
 ```
@@ -177,23 +226,24 @@ xhs-adb-publisher/
 ├── README.md                      ← 详细文档
 ├── scripts/
 │   ├── phone_controller.py        ← ADB 手机操控核心
-│   ├── xhs_article_publisher.py   ← 文章发布模块
-│   ├── xhs_image_publisher.py     ← 🆕 图文发布模块
-│   ├── xhs_comment_acquisition.py ← ✅ 评论区获客模块
-│   ├── xhs_llm.py                 ← LLM API 封装（千帆 qianfan-code-latest）
+│   ├── xhs_article_publisher.py   ← 文章发布模块（两步法 LLM→ADB）
+│   ├── xhs_image_publisher.py     ← 图文发布模块
+│   ├── xhs_comment_acquisition.py ← 评论区获客模块
+│   ├── xhs_llm.py                 ← LLM API 封装（主用 deepseek-v4-flash）
 ├── templates/
-│   ├── short-article-prompt.md    ← 🆕 短文章模板（300-1000字）
+│   ├── user-article-prompt.md     ← 用户自定义文章模板（含占位符）
+│   ├── short-article-prompt.md    ← 短文章模板（300-1000字）
 │   ├── article-prompt.md          ← 文章生成提示词
-│   ├── cover-prompt-1.md          ← 🆕 封面模板1：蓝色手举手机
-│   ├── cover-prompt-2.md          ← 🆕 封面模板2：卡通小马梗图
-│   ├── tutorial-prompt.md         ← 🆕 教程提示词
-│   ├── story-prompt.md            ← 🆕 故事提示词
-│   ├── comparison-prompt.md       ← 🆕 对比提示词
-│   ├── list-prompt.md             ← 🆕 清单提示词
-│   └── comment-prompt.md          ← ✅ 评论生成提示词
+│   ├── cover-prompt-1.md          ← 封面模板1：蓝色手举手机
+│   ├── cover-prompt-2.md          ← 封面模板2：卡通小马梗图
+│   ├── tutorial-prompt.md         ← 教程提示词
+│   ├── story-prompt.md            ← 故事提示词
+│   ├── comparison-prompt.md       ← 对比提示词
+│   ├── list-prompt.md             ← 清单提示词
+│   └── comment-prompt.md          ← 评论生成提示词
 ├── config/
 │   ├── publish.json               ← 发布+获客配置
-│   └── keywords.json              ← ✅ 种子关键词
+│   └── keywords.json              ← 种子关键词
 └── data/                           ← 运行时数据（评论历史）
 ```
 
@@ -230,3 +280,6 @@ A: 检查 MCP 服务器是否运行、账号是否登录。使用 `--dry-run` �
 
 ### Q: 如何查看评论历史？
 A: 查看 `data/commented-history.json` 文件。
+
+### Q: 文章内容模板在哪里改？
+A: 编辑 `templates/user-article-prompt.md`，支持 `{{product_name}}` 等占位符，改完立即生效。

@@ -13,7 +13,7 @@ SCRIPT_DIR = Path(__file__).parent.absolute()
 SKILL_DIR = SCRIPT_DIR.parent
 sys.path.insert(0, str(SCRIPT_DIR))
 
-from xhs_llm import call_llm_json
+from xhs_llm import call_llm, call_llm_json, analyze_product, build_writing_prompt
 from phone_controller import publish_article
 
 logger = logging.getLogger("xhs-publisher")
@@ -68,7 +68,7 @@ def _enforce_limits(title: str, body: str, product_url: str = "", product_name: 
 
 def _generate_xhs_body(editor_body: str, product_url: str, product_name: str) -> str:
     """LLM 生成精炼的 xhs 发布确认页正文(≤1000字)"""
-    product_cta = f"\n\n🔥【立即体验】\n👉 {product_name}: {product_url}"
+    product_cta = f"\n\n感兴趣的话可以自己去看看→\n{product_url}"
     cta_len = len(product_cta)
     target_len = MAX_XHS_BODY - cta_len
     prompt = f"""你是一个小红书内容精简专家。
@@ -103,40 +103,66 @@ def _generate_xhs_body(editor_body: str, product_url: str, product_name: str) ->
         return editor_body[:MAX_XHS_BODY - len(product_cta)].strip() + product_cta
 
 
+def _parse_article_output(raw: str) -> tuple:
+    """从 LLM 纯文本输出中提取标题和正文"""
+    lines = raw.strip().split("\n")
+    title = ""
+    body = raw.strip()
+    for i, line in enumerate(lines):
+        stripped = line.strip()
+        if re.search(r'#*\s*标题\s*[：:]\s*', stripped):
+            title = re.sub(r'#*\s*标题\s*[：:]\s*', '', stripped).strip()
+            body = "\n".join(lines[i+1:]).strip()
+            break
+        if re.match(r'^#{1,3}\s+\S', stripped) and 4 < len(stripped) < 40:
+            title = re.sub(r'^#+\s+', '', stripped).strip()
+            body = "\n".join(lines[i+1:]).strip()
+            break
+        if i == 0 and len(stripped) < 40 and not stripped.startswith("#") and not stripped.startswith("!"):
+            title = stripped
+            body = "\n".join(lines[1:]).strip()
+            break
+    body = re.sub(r'^###?\s*正文\s*[：:]\s*', '', body, flags=re.MULTILINE)
+    body = re.sub(r'^[：:]\s*', '', body)
+    return title, body
+
+
 def _retry_llm(prompt_template: str, product_url: str, product_name: str,
                target_audience: str) -> dict:
-    """带重试的 LLM 调用,确保正文≥2500字"""
-    prompt = prompt_template.replace("{{product_url}}", product_url)
-    prompt = prompt.replace("{{product_name}}", product_name or product_url)
-    prompt = prompt.replace("{{target_audience}}", target_audience)
+    """两步法：1. 抓取网页分析产品 2. 按模板生成文章（带长度重试）"""
+    # 第一步：抓取网页 → 分析产品
+    logger.info("第一步：抓取网页并分析产品...")
+    product_info = analyze_product(product_url, product_name)
+
+    # 用用户模板生成写作提示词
+    prompt = build_writing_prompt(product_info, product_url)
+    # 长文覆盖字数为 1200-2000
+    prompt += "\n\n【注意】这是一篇长文分享，请将字数控制在1200-2000字之间。"
 
     total_len = 0
     for attempt in range(1, MAX_RETRIES + 1):
-        logger.info(f"LLM 生成第 {attempt}/{MAX_RETRIES} 次...")
+        logger.info(f"第二步：LLM 生成文章第 {attempt}/{MAX_RETRIES} 次...")
 
-        # 追加长度要求(越往后越严厉)
         length_hint = ""
         if attempt == 2:
             if total_len > 2000:
-                length_hint = "\n⚠️ 上次输出超过2000字!正文总字数(含标点空格)必须控制在1200-2000字!请缩减!"
+                length_hint = "\n⚠️ 上次输出超过2000字！正文必须在1200-2000字，请缩减！"
             else:
-                length_hint = "\n⚠️ 上次输出不足1200字!正文总字数(含标点空格)必须控制在1200-2000字!请扩充!"
+                length_hint = "\n⚠️ 上次输出不足1200字！正文必须在1200-2000字，请扩充！"
         elif attempt == 3:
-            length_hint = "\n⚠️ 正文必须控制在1200-2000字!太短或太长都会被截断导致发布失败!"
+            length_hint = "\n⚠️ 正文必须控制在1200-2000字！"
 
-        result = call_llm_json(
-            system_prompt=f"你是一个专业的小红书内容创作者。{length_hint}严格按照用户要求输出JSON格式。",
+        raw = call_llm(
+            system_prompt=f"你是一个分享真实产品体验的小红书博主。{length_hint}",
             user_prompt=prompt + length_hint,
-            max_tokens=384000,
+            max_tokens=8192,
         )
 
-        title = result.get("title", "")
-        body = result.get("body", "")
+        title, body = _parse_article_output(raw)
 
         total_len = len(body.strip())
         logger.info(f"  LLM返回: 标题{_chars(title)}字 正文{_chars(body)}字")
 
-        # 校验总长度(含标点/emoji),控制在1200-2000字
         if MIN_BODY_LEN <= total_len <= 2000:
             return {"title": title, "body": body, "retries": attempt}
 
@@ -146,7 +172,7 @@ def _retry_llm(prompt_template: str, product_url: str, product_name: str,
             else:
                 logger.warning(f"  正文{total_len}字符,超过2000字上限,重试...")
 
-    logger.warning(f"  已重试{MAX_RETRIES}次仍不足{MIN_BODY_LEN}字符,使用当前结果")
+    logger.warning(f"  已重试{MAX_RETRIES}次,使用当前结果")
     return {"title": title, "body": body, "retries": MAX_RETRIES}
 
 def generate_article(product_url: str, product_name: str = "",

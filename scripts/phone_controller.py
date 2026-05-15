@@ -38,7 +38,46 @@ def get_device(serial: str = None) -> u2.Device:
             d = u2.connect(serial) if serial else u2.connect()
             _device_pool[key] = d
             logger.info(f"连接设备 {key} | 分辨率 {d.info.get('displayWidth')}x{d.info.get('displayHeight')}")
+            # 确保 ATX Keyboard 是默认输入法（中文输入必须）
+            ensure_atx_keyboard(d, key)
         return _device_pool[key]
+
+
+def ensure_atx_keyboard(d: u2.Device, key: str = ""):
+    """确保 ATX Keyboard 设置为默认输入法，否则 send_keys 无法输入中文"""
+    try:
+        current_ime = d.shell("settings get secure default_input_method").output.strip()
+        logger.info(f"[{key}] 当前输入法: {current_ime}")
+        if "atx" in current_ime.lower() or "adbkeyboard" in current_ime.lower():
+            logger.info(f"[{key}] ✅ ATX Keyboard 已为默认输入法")
+            return
+        logger.info(f"[{key}] 设置 ATX Keyboard 为默认输入法...")
+        # 方式1: ime set
+        d.shell("ime enable com.github.uiautomator/.AdbKeyboardService")
+        d.shell("ime set com.github.uiautomator/.AdbKeyboardService")
+        time.sleep(0.5)
+        after = d.shell("settings get secure default_input_method").output.strip()
+        if "atx" in after.lower() or "adbkeyboard" in after.lower():
+            logger.info(f"[{key}] ✅ ATX Keyboard 设置成功")
+            return
+        # 方式2: settings put (ColorOS 绕过)
+        logger.info(f"[{key}] ime set 被拦截，用 settings put...")
+        d.shell("settings put secure default_input_method com.github.uiautomator/.AdbKeyboardService")
+        time.sleep(0.5)
+        after = d.shell("settings get secure default_input_method").output.strip()
+        if "atx" in after.lower() or "adbkeyboard" in after.lower():
+            logger.info(f"[{key}] ✅ settings put 设置成功")
+            return
+        # 方式3: set_fasttext_ime (uiautomator2 内置)
+        logger.info(f"[{key}] 尝试 set_fasttext_ime...")
+        try:
+            d.set_fasttext_ime()
+            logger.info(f"[{key}] ✅ set_fasttext_ime 成功")
+        except Exception as e2:
+            logger.warning(f"[{key}] ❌ 自动设置均失败(ColorOS限制): {e2}")
+            logger.warning(f"[{key}] 请手动: 设置→其他设置→键盘与输入法→默认输入法→ATX Keyboard")
+    except Exception as e:
+        logger.warning(f"[{key}] ⚠️ 设置输入法出错: {e}")
 
 def home(device: u2.Device = None):
     (device or get_device()).press("home"); jitter(0.3)
