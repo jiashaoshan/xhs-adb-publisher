@@ -48,7 +48,7 @@ def banner():
     print()
     print("  ╔═══════════════════════════════════════════╗")
     print("  ║   小红书运营技能                          ║")
-    print("  ║   发布文章 | 评论区获客 | 直发笔记         ║")
+    print("  ║   发布文章 | 评论区获客 | 直发笔记 | 图文发布 | 图文日常 ║")
     print("  ╚═══════════════════════════════════════════╝")
     print()
 
@@ -104,6 +104,13 @@ def cmd_publish_image(args):
     print(json.dumps(result, ensure_ascii=False, indent=2))
     return result
 
+def cmd_daily_image(args):
+    """图文日常发布: TrendRadar juejin热点 → 读文章 → LLM改写 → 豆包封面 → ADB"""
+    from xhs_daily_image_publisher import run
+    result = run(dry_run=args.dry_run, serial=args.serial)
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+    return result
+
 def main():
     banner()
     parser = argparse.ArgumentParser(description="小红书运营技能工具")
@@ -133,6 +140,11 @@ def main():
     parser.add_argument("--topic", "-t", help="图文发布主题（或产品链接）")
     parser.add_argument("--article-type", choices=["general", "tutorial", "story", "comparison", "list"],
                         help="文章类型（自动检测）")
+
+    # 图文日常发布模式
+    parser.add_argument("--daily-image", action="store_true",
+                        help="图文日常发布: TrendRadar juejin热点→读文章→LLM改写→ADB")
+    parser.add_argument("--serial", "-s", help="ADB设备串号（可选）")
     
     args = parser.parse_args()
     
@@ -146,6 +158,8 @@ def main():
         cmd_write_long(args)
     elif args.publish_image:
         cmd_publish_image(args)
+    elif args.daily_image:
+        cmd_daily_image(args)
     else:
         parser.print_help()
 

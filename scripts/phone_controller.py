@@ -129,21 +129,42 @@ def card_style_to_publish(device: u2.Device = None):
     jitter(2)
 
 def set_visibility_and_publish(device: u2.Device = None):
+    """确保公开可见 + 发布笔记"""
     d = device or get_device()
-    # 点击可见性设置区（"公开可见"文本）
+    logger.info("确认可见范围: 公开可见")
+
+    # 检查当前是否显示"公开可见"（默认就是公开，无需改动）
     el = d(textContains="公开可见")
     if el.exists(timeout=2):
-        el.click(); logger.info("点击: 公开可见")
+        logger.info("已是公开可见")
     else:
-        d.click(*_scale(d, 174, 1765)); logger.info("坐标点击可见性")
-    jitter(1)
-    # 弹出菜单中选择"仅自己可见"
-    el = d(text="仅自己可见")
-    if el.exists(timeout=2):
-        el.click(); logger.info("选择: 仅自己可见")
-    else:
-        d.click(*_scale(d, 297, 2232)); logger.info("坐标选择可见性")
-    jitter(0.5)
+        # 如果当前是"仅自己可见"，点开切换
+        el = d(textContains="仅自己可见")
+        if el.exists(timeout=2):
+            el.click()
+            logger.info("点击: 仅自己可见（准备切换）")
+            jitter(1)
+            # 弹出菜单中选择"公开可见"
+            for pub_text in ["公开可见", "公开", "所有人可见"]:
+                pub_el = d(text=pub_text)
+                if pub_el.exists(timeout=1):
+                    pub_el.click()
+                    logger.info(f"选择: {pub_text}")
+                    jitter(0.5)
+                    break
+        else:
+            # 找不到可见性设置，尝试坐标点击
+            d.click(*_scale(d, 174, 1765))
+            logger.info("坐标点击可见性区域")
+            jitter(1)
+            for pub_text in ["公开可见", "公开", "所有人可见"]:
+                pub_el = d(text=pub_text)
+                if pub_el.exists(timeout=1):
+                    pub_el.click()
+                    logger.info(f"选择: {pub_text}")
+                    jitter(0.5)
+                    break
+
     # 点击"发布笔记"按钮
     el = d(text="发布笔记")
     if el.exists(timeout=2):
