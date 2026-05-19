@@ -159,20 +159,60 @@ def _mcp_close(url: str, sid: str):
 # 步骤1: 获取 juejin 热点
 # ============================================================
 
-def fetch_juejin_hotspots(limit: int = 2) -> list:
+# AI 相关关键词（命中越多优先级越高）
+AI_KEYWORDS = [
+    "AI", "大模型", "LLM", "GPT", "Claude", "Agent", "Skill",
+    "Cursor", "Codex", "Copilot", "OpenAI", "DeepSeek", "ChatGPT",
+    "编程", "代码", "开发", "工具", "效率", "自动化",
+    "Prompt", "RAG", "向量", "Embedding", "推理",
+    "智能体", "工作流", "开源", "模型",
+]
+
+def _match_ai_score(title: str) -> int:
+    """计算标题与 AI 关键词的匹配分数（不区分大小写）"""
+    title_lower = title.lower()
+    score = 0
+    for kw in AI_KEYWORDS:
+        if kw.lower() in title_lower:
+            score += 1
+    return score
+
+def fetch_juejin_hotspots(limit: int = 2, fetch_count: int = 15) -> list:
+    """从 TrendRadar 获取 juejin 热点，按 AI 关键词过滤"""
     logger.info("📡 连接 TrendRadar MCP...")
     sid = _mcp_init()
     try:
-        logger.info(f"🔍 获取 juejin 热点 (limit={limit})...")
+        logger.info(f"🔍 获取 juejin 热点 (fetch={fetch_count}, target={limit})...")
         result = _mcp_call(TRENDRADAR_MCP_URL, sid, "get_latest_news", {
-            "platforms": ["juejin"], "limit": limit, "include_url": True,
+            "platforms": ["juejin"], "limit": fetch_count, "include_url": True,
         })
         if not result or not isinstance(result, dict):
             logger.warning("TrendRadar 返回空数据")
             return []
+
         items = result.get("data", [])
         logger.info(f"  获取到 {len(items)} 条 juejin 热点")
-        return items
+
+        # 按 AI 关键词匹配评分排序
+        scored = [(item, _match_ai_score(item.get("title", ""))) for item in items]
+        scored.sort(key=lambda x: x[1], reverse=True)
+
+        # 取匹配分最高的前 N 条（至少分数 > 0）
+        filtered = [item for item, score in scored if score > 0][:limit]
+
+        if filtered:
+            logger.info(f"  ✅ AI 关键词过滤后: {len(filtered)} 条")
+            for item in filtered:
+                s = _match_ai_score(item.get("title", ""))
+                logger.info(f"    [{s}分] {item.get('title','')[:50]}")
+        else:
+            # 没有匹配的，降级取热度最高的
+            logger.warning(f"  ⚠️ 无 AI 相关内容，降级取前 {limit} 条")
+            filtered = items[:limit]
+            for item in filtered:
+                logger.info(f"    {item.get('title','')[:50]}")
+
+        return filtered
     finally:
         _mcp_close(TRENDRADAR_MCP_URL, sid)
 
