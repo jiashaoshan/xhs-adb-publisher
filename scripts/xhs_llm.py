@@ -15,12 +15,12 @@ LLM_RETRY_DELAY = 15
 # 备选 Provider（主用不通时自动切换）
 FALLBACK_API_URL = None
 FALLBACK_API_KEY = None
-FALLBACK_MODEL = "kimi-k2.5"
-FALLBACK_PROVIDER_IDS = ["volcengine-plan", "baiduqianfan", "qianfan"]
+FALLBACK_MODEL = "deepseek-v4-flash"
+FALLBACK_PROVIDER_IDS = ["deepseek"]
 
 
 def _load_llm_config():
-    """从 openclaw.json 读取 LLM 配置（主用 deepseek，自动备选）"""
+    """从 openclaw.json 读取 LLM 配置（主用千帆，自动备选 deepseek）"""
     global LLM_API_URL, LLM_API_KEY, DEFAULT_MODEL
     global FALLBACK_API_URL, FALLBACK_API_KEY, FALLBACK_MODEL
     if LLM_API_URL and LLM_API_KEY:
@@ -35,30 +35,28 @@ def _load_llm_config():
             for provider_id, p in providers.items():
                 pid = provider_id.lower()
 
-                # 主用：deepseek
-                if "deepseek" in pid:
+                # 主用：千帆
+                if "qianfan" in pid or "baidu" in pid:
                     LLM_API_URL = p.get("baseUrl", "") + "/chat/completions"
                     LLM_API_KEY = p.get("apiKey", "")
                     models = p.get("models", [])
                     if models:
-                        DEFAULT_MODEL = models[0].get("id", "deepseek-v4-flash")
+                        DEFAULT_MODEL = models[0].get("id", "qianfan-code-latest")
                     logger.info(f"主用: {LLM_API_URL} | 模型: {DEFAULT_MODEL}")
 
-                # 备选
+                # 备选：deepseek
                 elif any(fid in pid for fid in FALLBACK_PROVIDER_IDS):
                     if not FALLBACK_API_URL:
                         FALLBACK_API_URL = p.get("baseUrl", "") + "/chat/completions"
                         FALLBACK_API_KEY = p.get("apiKey", "")
                         fb_models = p.get("models", [])
-                        for m in fb_models:
-                            if "kimi" in m.get("id", ""):
-                                FALLBACK_MODEL = m["id"]
-                                break
+                        if fb_models:
+                            FALLBACK_MODEL = fb_models[0].get("id", "deepseek-v4-flash")
                         logger.info(f"备选: {FALLBACK_API_URL} | 模型: {FALLBACK_MODEL}")
     except Exception as e:
         logger.debug(f"读取 openclaw.json LLM 配置失败: {e}")
 
-    # fallback: 环境变量
+    # fallback: 环境变量（兜底用 deepseek）
     if not LLM_API_URL:
         LLM_API_URL = os.environ.get("LLM_API_URL", "https://api.deepseek.com/chat/completions")
         LLM_API_KEY = os.environ.get("DEEPSEEK_API_KEY", "")
@@ -85,7 +83,7 @@ def call_llm(system_prompt: str, user_prompt: str, model: str = None,
     if max_tokens is None:
         max_tokens = DEFAULT_MAX_TOKENS
 
-    # 千帆 API 的 max_tokens 限制，超过 8192 容易失败
+    # max_tokens 限制，超过 8192 容易失败
     if max_tokens > 8192:
         logger.warning(f"max_tokens {max_tokens} 过大，调整为 8192")
         max_tokens = 8192
