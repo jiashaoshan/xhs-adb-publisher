@@ -60,6 +60,7 @@ def cmd_publish(args):
         product_name=args.product_name or "",
         target_audience=args.target_audience or "",
         dry_run=args.dry_run,
+        serial=args.serial,
     )
     print(json.dumps(result, ensure_ascii=False, indent=2))
     return result
@@ -100,6 +101,7 @@ def cmd_publish_image(args):
         product_url=args.product_url or "",
         article_type=args.article_type,
         dry_run=args.dry_run,
+        serial=args.serial,
     )
     print(json.dumps(result, ensure_ascii=False, indent=2))
     return result
@@ -144,7 +146,7 @@ def main():
     # 图文日常发布模式
     parser.add_argument("--daily-image", action="store_true",
                         help="图文日常发布: TrendRadar juejin热点→读文章→LLM改写→ADB")
-    parser.add_argument("--serial", "-s", help="ADB设备串号（可选）")
+    parser.add_argument("--serial", "-s", help="ADB设备串号（可选，留空则走 配置文件 > ANDROID_SERIAL 环境变量）")
     
     args = parser.parse_args()
     

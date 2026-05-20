@@ -1,5 +1,7 @@
 {
   "_说明": "文章发布配置",
+  "device_serial": "6DHQR8MJMVH6AAMZ",
+  "_device_serial说明": "ADB设备串号，通过 adb devices 查看。留空则读取环境变量 ANDROID_SERIAL，再留空则连接首台设备",
   "default_title": "AI工具实测分享",
   "target_audience": "创业者、技术人、效率爱好者",
   "xhs_body_max_chars": 1000,

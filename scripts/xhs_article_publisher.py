@@ -200,7 +200,7 @@ def generate_article(product_url: str, product_name: str = "",
     }
 
 def run(product_url: str, product_name: str = "", target_audience: str = "",
-        dry_run: bool = False) -> dict:
+        dry_run: bool = False, serial: str = None) -> dict:
     """
     完整发布流程: LLM生成 → ADB发布
 
@@ -209,6 +209,7 @@ def run(product_url: str, product_name: str = "", target_audience: str = "",
         product_name: 产品名称（可选）
         target_audience: 目标受众（可选）
         dry_run: 仅生成不发布
+        serial: ADB 设备串号（可选，为空则走 配置>环境变量 优先级链）
     """
     result = {"status": "started", "steps": []}
 
@@ -229,7 +230,7 @@ def run(product_url: str, product_name: str = "", target_audience: str = "",
     # 步骤2: ADB 发布
     logger.info(f"步骤2/2: ADB 发布到小红书...")
     try:
-        serial = os.environ.get("ANDROID_SERIAL")
+        # 设备串号: 显式传入 > 配置文件 > 环境变量 > 默认首台设备
         publish_result = publish_article(
             serial=serial,
             product_url=product_url,

@@ -4,15 +4,28 @@ Phone Controller — 通过 ADB 操控 Android 手机的核心模块
 
 ✅ 支持多设备：所有函数接受 device 参数，不依赖全局单例
 ✅ 所有 time.sleep 加入了随机抖动 (±20%) 以模拟真人操作节奏
+✅ 设备选择优先级: 显式传入 serial > 配置文件 device_serial > 环境变量 ANDROID_SERIAL > 默认首台设备
 """
 import uiautomator2 as u2
-import time, os, random, logging, threading
+import time, os, random, logging, threading, json
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
 # 设备缓存 {serial: device}
 _device_pool = {}
 _device_pool_lock = threading.Lock()
+
+def _load_config_serial() -> str:
+    """从配置文件读取设备串号（publish.json → device_serial）"""
+    try:
+        config_path = Path(__file__).parent.parent / "config" / "publish.json"
+        if config_path.exists():
+            cfg = json.loads(config_path.read_text(encoding="utf-8"))
+            return (cfg.get("device_serial") or "").strip()
+    except Exception:
+        pass
+    return ""
 
 def jitter(sec: float, ratio: float = 0.2) -> float:
     """带随机抖动的 sleep: sec * (1 ± ratio)"""
@@ -29,9 +42,24 @@ def _scale(d: u2.Device, x: int, y: int) -> tuple:
     sh = info.get('displayHeight', REF_H)
     return int(x * sw / REF_W), int(y * sh / REF_H)
 
+def _resolve_serial(serial: str = None) -> str:
+    """解析设备串号：显式传入 > 配置文件 > 环境变量"""
+    if serial:
+        return serial
+    cfg_serial = _load_config_serial()
+    if cfg_serial:
+        logger.info(f"📱 使用配置文件的设备串号: {cfg_serial}")
+        return cfg_serial
+    env_serial = os.environ.get("ANDROID_SERIAL", "").strip()
+    if env_serial:
+        logger.info(f"📱 使用环境变量的设备串号: {env_serial}")
+        return env_serial
+    logger.warning("⚠️ 未指定设备串号（配置/环境变量均为空），将连接首台 ADB 设备")
+    return None
+
 def get_device(serial: str = None) -> u2.Device:
     global _device_pool, _device_pool_lock
-    serial = serial or os.environ.get("ANDROID_SERIAL")
+    serial = _resolve_serial(serial)
     key = serial or "__default__"
     with _device_pool_lock:
         if key not in _device_pool:

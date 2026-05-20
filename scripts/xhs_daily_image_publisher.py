@@ -17,7 +17,7 @@ SKILL_DIR = SCRIPT_DIR.parent
 sys.path.insert(0, str(SCRIPT_DIR))
 
 from xhs_llm import call_llm_json, call_llm
-from phone_controller import publish_image_article
+from phone_controller import publish_image_article, _resolve_serial
 
 logger = logging.getLogger("xhs-daily-image")
 
@@ -30,7 +30,7 @@ TRENDRADAR_MCP_URL = "http://100.111.235.91:3333/mcp"
 MAX_TITLE_LEN = 20
 MAX_BODY_LEN = 1000
 MIN_BODY_LEN = 300
-DAILY_SERIAL = "6DHQR8MJMVH6AAMZ"  # 图文日常发布专用设备
+DAILY_SERIAL_FALLBACK = "6DHQR8MJMVH6AAMZ"  # 图文日常发布兜底设备（仅当配置/环境变量均为空时使用）
 
 # ============================================================
 # 工具函数
@@ -480,7 +480,8 @@ def run(dry_run: bool = False, serial: str = None) -> dict:
         serial: ADB 设备串号（默认使用 DAILY_SERIAL）
     """
     result = {"status": "started", "steps": []}
-    serial = serial or DAILY_SERIAL
+    # 设备串号: 显式传入 > 配置文件 > 环境变量 > DAILY_SERIAL_FALLBACK
+    serial = serial or _resolve_serial() or DAILY_SERIAL_FALLBACK
     logger.info(f"📱 目标设备: {serial}")
 
     # ═══ 步骤1 ═══
@@ -565,7 +566,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="图文日常发布：TrendRadar juejin热点→LLM改写→ADB发布")
     parser.add_argument("--dry-run", action="store_true", help="仅生成不发布")
     parser.add_argument("--publish", action="store_true", help="生成并发布")
-    parser.add_argument("--serial", "-s", help=f"ADB设备串号（默认: {DAILY_SERIAL}）")
+    parser.add_argument("--serial", "-s", help=f"ADB设备串号（默认: {DAILY_SERIAL_FALLBACK}）")
     args = parser.parse_args()
     result = run(dry_run=args.dry_run, serial=args.serial)
     print(json.dumps(result, ensure_ascii=False, indent=2))
