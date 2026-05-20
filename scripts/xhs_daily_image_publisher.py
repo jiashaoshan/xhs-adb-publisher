@@ -136,6 +136,7 @@ def _mcp_call(url: str, sid: str, tool_name: str, args: dict) -> dict:
         "jsonrpc": "2.0", "id": 99, "method": "tools/call",
         "params": {"name": tool_name, "arguments": args}
     }, headers=headers, proxies=no_proxy, timeout=60)
+    r.encoding = 'utf-8'  # 强制UTF-8解码，防止中文乱码
     for line in r.text.split("\n"):
         line = line.strip()
         if line.startswith("data: "):
