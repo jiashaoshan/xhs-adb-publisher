@@ -25,7 +25,7 @@ from xhs_llm import call_llm, call_llm_json
 logger = logging.getLogger("xhs-hotspot-long")
 
 TRENDRADAR_URL = os.environ.get("TRENDRADAR_URL", "http://100.111.235.91:3333/mcp")
-MAX_TITLE_LEN = 20
+MAX_TITLE_LEN = 40
 MIN_BODY_LEN = 2500
 MAX_BODY_LEN = 4000
 MAX_XHS_BODY = 1000
@@ -447,9 +447,9 @@ def generate_xhs_body(full_body, product_url, product_name):
 # ====================================================================
 
 def load_published():
-    if PUBLISHED_RECORD.exists():
+    if PUBLISH_RECORD.exists():
         try:
-            return json.loads(PUBLISHED_RECORD.read_text(encoding="utf-8"))
+            return json.loads(PUBLISH_RECORD.read_text(encoding="utf-8"))
         except Exception:
             return []
     return []
@@ -459,7 +459,7 @@ def save_published(entry):
     records = load_published()
     records.append(entry)
     DATA_DIR.mkdir(parents=True, exist_ok=True)
-    PUBLISHED_RECORD.write_text(
+    PUBLISH_RECORD.write_text(
         json.dumps(records, ensure_ascii=False, indent=2),
         encoding="utf-8",
     )
