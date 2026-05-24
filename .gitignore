@@ -9,3 +9,6 @@ data/test_download/
 __pycache__/
 *.pyc
 .venv/
+
+# 生成的文章输出
+output/

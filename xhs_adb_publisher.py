@@ -113,6 +113,18 @@ def cmd_daily_image(args):
     print(json.dumps(result, ensure_ascii=False, indent=2))
     return result
 
+def cmd_hotspot_long(args):
+    """热点自动写长文: TrendRadar热点 → 产品分析 → LLM生成3000字长文 → ADB发布"""
+    from xhs_hotspot_long_article import run
+    result = run(
+        product_url=args.product_url,
+        dry_run=args.dry_run,
+        serial=args.serial,
+        max_count=args.max or 1,
+    )
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+    return result
+
 def main():
     banner()
     parser = argparse.ArgumentParser(description="小红书运营技能工具")
@@ -147,9 +159,14 @@ def main():
     parser.add_argument("--daily-image", action="store_true",
                         help="图文日常发布: TrendRadar juejin热点→读文章→LLM改写→ADB")
     parser.add_argument("--serial", "-s", help="ADB设备串号（可选，留空则走 配置文件 > ANDROID_SERIAL 环境变量）")
-    
+
+    # 热点长文模式
+    parser.add_argument("--hotspot-long", action="store_true",
+                        help="热点自动写长文: TrendRadar热点→产品分析→LLM生成3000字长文→ADB发布")
+    parser.add_argument("--max", type=int, default=1, help="热点长文最多生成几篇（默认1）")
+
     args = parser.parse_args()
-    
+
     if args.publish:
         cmd_publish(args)
     elif args.acquire:
@@ -162,6 +179,8 @@ def main():
         cmd_publish_image(args)
     elif args.daily_image:
         cmd_daily_image(args)
+    elif args.hotspot_long:
+        cmd_hotspot_long(args)
     else:
         parser.print_help()
 

@@ -1,0 +1,8 @@
+{
+  "$schema": "xhs-adb-publisher LLM 配置",
+  "$description": "LLM Provider 配置，URL 和 API Key 配在这里",
+
+  "provider": "baiduqianfancodingplan",
+  "api_key": "bce-v3/ALTAKSP-7nCBCub9Id4dyDwPtt1UU/fb5f9bc5eb18c9de0aaed39a2ae510dfed4ae05b",
+  "model": "qianfan-code-latest"
+}

@@ -2,8 +2,8 @@
 name: XHS ADB Publisher
 description: |
   小红书自动化运营技能
-  功能：文章发布 + 图文发布 + 评论区获客
-  基于 uiautomator2 (ADB) + xiaohongshu-mcp + LLM（deepseek-v4-flash 主用）
+  功能：文章发布 + 图文发布 + 评论区获客 + 热点自动写长文
+  基于 uiautomator2 (ADB) + xiaohongshu-mcp + TrendRadar + LLM（千帆主用，deepseek备选）
 metadata:
   openclaw:
     emoji: "📕"
@@ -27,6 +27,7 @@ metadata:
 | 💬 评论区获客 | MCP+LLM | 搜索 → AI评分 → LLM评论 → MCP发表 |
 | ✏️ 写想法 | ADB | 纯文字笔记直发 |
 | 📄 写长文 | ADB | 长文笔记（含一键排版） |
+| 🔥 热点自动写长文 | TrendRadar+LLM+ADB | 获取热点 → 产品分析 → LLM生成3000字长文 → ADB发布 |
 
 ## 文章生成流程
 
@@ -77,17 +78,65 @@ metadata:
 | 提问互动型 | 提出开放性问题，引导作者回复 |
 | 经验交流型 | 分享自身经历，建立平等交流 |
 
+## 热点自动写长文 (v1.0.0)
+
+### 架构
+
+```
+产品链接
+    ↓
+步骤1: LLM 分析产品（卖点/核心功能/特点）
+    ↓
+步骤2: TrendRadar MCP 获取热点
+  ├── 主渠道: 新智元 RSS（AI/科技深度文章）
+  └── 降级: V2EX 热榜（技术话题）
+    ↓
+步骤3: AI 挑选最适合与产品结合的热点
+    ↓
+步骤4: LLM 生成 2500-4000 字长文
+  ├── 从热点话题切入（行业趋势/技术讨论）
+  ├── 自然引出产品（分享真实体验）
+  └── 正文嵌入产品链接，引导点击
+    ↓
+步骤5: ADB 发布长文到小红书
+  ├── 完整正文 (editor_body) → 一键排版
+  └── 精简版 (xhs_body) → 发布确认页
+```
+
+### 快速使用
+
+```bash
+# 全自动（分析产品 → 获取热点 → 生成文章 → ADB发布长文）
+python3 xhs_adb_publisher.py --hotspot-long --product-url "https://ai.hcrzx.com"
+
+# 测试模式（不实际发布）
+python3 xhs_adb_publisher.py --hotspot-long --product-url "https://ai.hcrzx.com" --dry-run
+
+# 指定设备
+python3 xhs_adb_publisher.py --hotspot-long --product-url "https://ai.hcrzx.com" --serial R3CN8A
+```
+
 ## LLM 模型配置
 
-从 `~/.openclaw/openclaw.json` 的 `models.providers` 自动读取：
+从 `config/llm.json` 读取：
 
-| 优先级 | Provider | 模型 | 说明 |
-|:------:|----------|------|------|
-| 1 | `deepseek` | `deepseek-v4-flash` | 主用 |
-| 2 | `volcengine-plan` | `kimi-k2.5` | 429 限流时自动切换 |
-| 3 | `baiduqianfan` / `qianfan` | `qianfan-code-latest` | 备选兜底 |
+```json
+{
+  "provider": "baiduqianfancodingplan",
+  "api_key": "bce-v3/xxx",
+  "model": "qianfan-code-latest"
+}
+```
 
-也可通过环境变量 `DEEPSEEK_API_KEY` / `LLM_API_URL` 配置。
+| provider | 说明 | 默认模型 |
+|----------|------|---------|
+| `baiduqianfancodingplan` | 百度千帆编码计划 | `qianfan-code-latest` |
+| `deepseek` | DeepSeek API | `deepseek-v4-flash` |
+| `sensenova` | 燧原科技 API | `deepseek-v4-flash` |
+
+优先级: `config/llm.json` > 环境变量 `LLM_API_KEY` / `LLM_MODEL` / `DEEPSEEK_API_KEY`
+
+当千帆 API 429 限流时，自动切换到备选 deepseek（需设置 `DEEPSEEK_API_KEY` 环境变量）。
 
 ## 依赖
 
@@ -225,11 +274,13 @@ xhs-adb-publisher/
 ├── SKILL.md                       ← 本文
 ├── README.md                      ← 详细文档
 ├── scripts/
-│   ├── phone_controller.py        ← ADB 手机操控核心
-│   ├── xhs_article_publisher.py   ← 文章发布模块（两步法 LLM→ADB）
-│   ├── xhs_image_publisher.py     ← 图文发布模块
-│   ├── xhs_comment_acquisition.py ← 评论区获客模块
-│   ├── xhs_llm.py                 ← LLM API 封装（主用 deepseek-v4-flash）
+│   ├── phone_controller.py          ← ADB 手机操控核心
+│   ├── xhs_article_publisher.py     ← 文章发布模块（两步法 LLM→ADB）
+│   ├── xhs_image_publisher.py       ← 图文发布模块
+│   ├── xhs_comment_acquisition.py   ← 评论区获客模块
+│   ├── xhs_daily_image_publisher.py ← 图文日常发布模块
+│   ├── xhs_hotspot_long_article.py  ← ★ 热点自动写长文模块
+│   ├── xhs_llm.py                   ← LLM API 封装（千帆主用，deepseek备选）
 ├── templates/
 │   ├── user-article-prompt.md     ← 用户自定义文章模板（含占位符）
 │   ├── short-article-prompt.md    ← 短文章模板（300-1000字）
@@ -240,8 +291,11 @@ xhs-adb-publisher/
 │   ├── story-prompt.md            ← 故事提示词
 │   ├── comparison-prompt.md       ← 对比提示词
 │   ├── list-prompt.md             ← 清单提示词
-│   └── comment-prompt.md          ← 评论生成提示词
+│   ├── comment-prompt.md          ← 评论生成提示词
+│   ├── cover-prompt-daily.md      ← 封面图提示词（日常版）
+│   └── hotspot-long-article-prompt.md ← ★ 热点长文生成提示词
 ├── config/
+│   ├── llm.json                   ← LLM 配置（provider/api_key/model）
 │   ├── publish.json               ← 发布+获客配置
 │   └── keywords.json              ← 种子关键词
 └── data/                           ← 运行时数据（评论历史）

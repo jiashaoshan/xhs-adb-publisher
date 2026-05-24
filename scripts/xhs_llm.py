@@ -1,4 +1,5 @@
-import json, logging, os, requests
+import json, logging, os, time as _time
+import requests
 from pathlib import Path
 from typing import Optional, Dict, Any
 
@@ -18,58 +19,75 @@ FALLBACK_API_KEY = None
 FALLBACK_MODEL = "deepseek-v4-flash"
 FALLBACK_PROVIDER_IDS = ["deepseek"]
 
+# 配置文件路径
+SCRIPT_DIR = Path(__file__).parent.absolute()
+SKILL_ROOT = SCRIPT_DIR.parent
+CONFIG_FILE = SKILL_ROOT / "config" / "llm.json"
+
+PROVIDER_URLS = {
+    "baiduqianfancodingplan": "https://qianfan.baidubce.com/v2/coding",
+    "deepseek": "https://api.deepseek.com",
+    "sensenova": "https://token.sensenova.cn/v1",
+}
+
+PROVIDER_MODELS = {
+    "baiduqianfancodingplan": "qianfan-code-latest",
+    "deepseek": "deepseek-v4-flash",
+    "sensenova": "deepseek-v4-flash",
+}
+
 
 def _load_llm_config():
-    """从 openclaw.json 读取 LLM 配置（主用千帆，自动备选 deepseek）"""
+    """从 config/llm.json 读取 LLM 配置，主用千帆，备选 deepseek"""
     global LLM_API_URL, LLM_API_KEY, DEFAULT_MODEL
     global FALLBACK_API_URL, FALLBACK_API_KEY, FALLBACK_MODEL
     if LLM_API_URL and LLM_API_KEY:
         return
-    try:
-        cfg_path = os.path.expanduser("~/.openclaw/openclaw.json")
-        if os.path.exists(cfg_path):
-            with open(cfg_path) as f:
-                data = json.load(f)
-            providers = data.get("models", {}).get("providers", {})
 
-            for provider_id, p in providers.items():
-                pid = provider_id.lower()
+    # 主用: 从 config/llm.json 读取
+    if CONFIG_FILE.exists():
+        try:
+            cfg = json.loads(CONFIG_FILE.read_text(encoding="utf-8"))
+            provider = cfg.get("provider", "baiduqianfancodingplan")
+            api_key = cfg.get("api_key", "")
+            model = cfg.get("model", "")
 
-                # 主用：千帆
-                if "qianfan" in pid or "baidu" in pid:
-                    LLM_API_URL = p.get("baseUrl", "") + "/chat/completions"
-                    LLM_API_KEY = p.get("apiKey", "")
-                    models = p.get("models", [])
-                    if models:
-                        DEFAULT_MODEL = models[0].get("id", "qianfan-code-latest")
-                    logger.info(f"主用: {LLM_API_URL} | 模型: {DEFAULT_MODEL}")
+            base_url = PROVIDER_URLS.get(provider)
+            if base_url and api_key:
+                LLM_API_URL = base_url + "/chat/completions"
+                LLM_API_KEY = api_key
+                DEFAULT_MODEL = model or PROVIDER_MODELS.get(provider, "qianfan-code-latest")
+                logger.info(f"主用: {LLM_API_URL} | 模型: {DEFAULT_MODEL}")
+        except Exception as e:
+            logger.debug(f"读取 config/llm.json 失败: {e}")
 
-                # 备选：deepseek
-                elif any(fid in pid for fid in FALLBACK_PROVIDER_IDS):
-                    if not FALLBACK_API_URL:
-                        FALLBACK_API_URL = p.get("baseUrl", "") + "/chat/completions"
-                        FALLBACK_API_KEY = p.get("apiKey", "")
-                        fb_models = p.get("models", [])
-                        if fb_models:
-                            FALLBACK_MODEL = fb_models[0].get("id", "deepseek-v4-flash")
-                        logger.info(f"备选: {FALLBACK_API_URL} | 模型: {FALLBACK_MODEL}")
-    except Exception as e:
-        logger.debug(f"读取 openclaw.json LLM 配置失败: {e}")
-
-    # fallback: 环境变量（兜底用 deepseek）
+    # 备选: 从环境变量读取 deepseek
     if not LLM_API_URL:
         LLM_API_URL = os.environ.get("LLM_API_URL", "https://api.deepseek.com/chat/completions")
         LLM_API_KEY = os.environ.get("DEEPSEEK_API_KEY", "")
+        if LLM_API_KEY:
+            logger.info("主用: 环境变量 LLM_API_URL / DEEPSEEK_API_KEY")
+    if not LLM_API_KEY:
+        LLM_API_KEY = os.environ.get("LLM_API_KEY", "")
+
+    # 备选 fallback 也走 deepseek 环境变量
+    fb_key = os.environ.get("DEEPSEEK_API_KEY") or os.environ.get("LLM_API_KEY", "")
+    if fb_key and fb_key != LLM_API_KEY:
+        FALLBACK_API_URL = "https://api.deepseek.com/chat/completions"
+        FALLBACK_API_KEY = fb_key
+        logger.info(f"备选: {FALLBACK_API_URL} | 模型: {FALLBACK_MODEL}")
+
 
 def get_api_key() -> str:
     _load_llm_config()
     if not LLM_API_KEY:
         raise EnvironmentError(
             "未找到 LLM API Key。\n"
-            "请在 ~/.openclaw/openclaw.json 的 models.providers 中配置千帆，"
-            "或设置环境变量 DEEPSEEK_API_KEY"
+            f"请在 {CONFIG_FILE} 中配置 api_key，"
+            "或设置环境变量 LLM_API_KEY / DEEPSEEK_API_KEY"
         )
     return LLM_API_KEY
+
 
 def call_llm(system_prompt: str, user_prompt: str, model: str = None,
              temperature: float = 0.7, max_tokens: int = None,
@@ -83,7 +101,6 @@ def call_llm(system_prompt: str, user_prompt: str, model: str = None,
     if max_tokens is None:
         max_tokens = DEFAULT_MAX_TOKENS
 
-    # max_tokens 限制，超过 8192 容易失败
     if max_tokens > 8192:
         logger.warning(f"max_tokens {max_tokens} 过大，调整为 8192")
         max_tokens = 8192
@@ -97,7 +114,6 @@ def call_llm(system_prompt: str, user_prompt: str, model: str = None,
         payload["response_format"] = response_format
 
     logger.info(f"LLM 调用: {api_url} | 模型: {model} | max_tokens: {max_tokens}")
-    import time as _time
     max_retries = 3
     for attempt in range(max_retries):
         try:
@@ -110,7 +126,6 @@ def call_llm(system_prompt: str, user_prompt: str, model: str = None,
                 logger.warning(f"429 限流，{delay}秒后重试 ({attempt+1}/{max_retries})...")
                 _time.sleep(delay)
                 continue
-            # 429 重试耗尽，切备选
             if e.response.status_code == 429 and FALLBACK_API_URL:
                 logger.warning(f"千帆限流，切换到备选: {FALLBACK_MODEL}")
                 fb_headers = {"Authorization": f"Bearer {FALLBACK_API_KEY}", "Content-Type": "application/json"}
@@ -128,6 +143,7 @@ def call_llm(system_prompt: str, user_prompt: str, model: str = None,
             logger.error(f"LLM 调用失败: {e}")
             raise
 
+
 def fetch_webpage_text(url: str) -> str:
     """抓取网页内容并提取可读文本（含 meta 兜底，适配 SPA）"""
     import re
@@ -138,7 +154,6 @@ def fetch_webpage_text(url: str) -> str:
         resp = requests.get(url, headers=headers, timeout=15)
         resp.raise_for_status()
 
-        # 自动检测编码
         content_type = resp.headers.get("content-type", "")
         if "charset=" in content_type:
             enc = content_type.split("charset=")[-1].split(";")[0].strip()
@@ -148,7 +163,6 @@ def fetch_webpage_text(url: str) -> str:
 
         html = resp.text
 
-        # 先尝试从 meta 提取（SPA 页面兜底）
         meta_title = re.search(r'<title>(.*?)</title>', html, re.DOTALL)
         meta_desc = re.search(
             r'<meta[^>]*name=["\']description["\'][^>]*content=["\'](.*?)["\']',
@@ -173,7 +187,6 @@ def fetch_webpage_text(url: str) -> str:
             meta_parts.append(f"关键词：{meta_keywords.group(1).strip()}")
         meta_text = "\n".join(meta_parts)
 
-        # 清理 HTML 取可见文本
         text = re.sub(r'<script[^>]*>.*?</script>', '', html, flags=re.DOTALL)
         text = re.sub(r'<style[^>]*>.*?</style>', '', text, flags=re.DOTALL)
         text = re.sub(r'<nav[^>]*>.*?</nav>', '', text, flags=re.DOTALL)
@@ -183,7 +196,6 @@ def fetch_webpage_text(url: str) -> str:
         text = re.sub(r'&[a-zA-Z]+;', ' ', text)
         text = re.sub(r'\s+', ' ', text).strip()
 
-        # 如果可见文本太少，用 meta 信息替代
         if len(text) < 100 and meta_text:
             text = meta_text
 
@@ -196,11 +208,6 @@ def fetch_webpage_text(url: str) -> str:
 
 
 def analyze_product(url: str, name: str = "") -> dict:
-    """
-    第一步：抓取网页内容 → LLM 提取结构化产品信息
-    返回: {"product_name", "positioning", "core_features", "characteristics"}
-    """
-    # 先抓取网页
     page_text = fetch_webpage_text(url)
 
     prompt = f"""根据网页内容，提取这个产品的关键信息，按格式输出JSON。
@@ -222,21 +229,18 @@ def analyze_product(url: str, name: str = "") -> dict:
     logger.info(f"分析产品: {url}")
     result = call_llm_json(
         system_prompt="你是一个信息提取专家，从网页内容中提取产品关键信息，不要编造网页中没有的内容。",
-        user_prompt=prompt,
-        temperature=0.2,
-        max_tokens=2048,
+        user_prompt=prompt, temperature=0.2, max_tokens=2048,
     )
     logger.info(f"分析结果: {result.get('product_name', '未知')}")
     return result
 
 
-SCRIPT_DIR = Path(__file__).parent.absolute()
-TEMPLATES_DIR = SCRIPT_DIR / ".." / "templates"
+SCRIPT_DIR_TPL = Path(__file__).parent.absolute()
+TEMPLATES_DIR = SCRIPT_DIR_TPL / ".." / "templates"
 USER_PROMPT_FILE = TEMPLATES_DIR / "user-article-prompt.md"
 
 
 def build_writing_prompt(product_info: dict, product_url: str = "") -> str:
-    """从模板文件读取提示词，填入产品信息和链接"""
     fp = USER_PROMPT_FILE
     if not fp.exists():
         logger.warning(f"用户提示词模板未找到: {fp}，使用内置模板")
@@ -254,8 +258,6 @@ def build_writing_prompt(product_info: dict, product_url: str = "") -> str:
 
 
 def call_llm_json(*args, **kwargs) -> dict:
-    # 不用 response_format=json_object 约束，避免模型截断输出
-    # 提示词已要求输出JSON，模型会自动遵循
     content = call_llm(*args, **kwargs)
     try:
         return json.loads(content)
